@@ -1,0 +1,6 @@
+.next
+node_modules
+public/engines
+public/data
+pnpm-lock.yaml
+data/openings

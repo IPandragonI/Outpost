@@ -1,0 +1,215 @@
+@import "tailwindcss";
+
+@plugin "daisyui" {
+  themes: false;
+}
+
+/* Outpost: warm paper surfaces with a brass accent, and a graphite dark counterpart. The
+   light theme is the app's default setting (applied as data-theme before first paint, see
+   layout.tsx); without a data-theme ("system" setting) the OS preference picks one. The
+   light theme deepens the hues where text needs WCAG AA contrast. */
+@plugin "daisyui/theme" {
+  name: "outpost";
+  default: false;
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: #14181d;
+  --color-base-200: #0f1216;
+  --color-base-300: #232a32;
+  --color-base-content: #e3e6ea;
+  --color-primary: #d9a650;
+  --color-primary-content: #1d1405;
+  --color-secondary: #2b343e;
+  --color-secondary-content: #e3e6ea;
+  --color-accent: #4fb8a8;
+  --color-accent-content: #04201c;
+  --color-neutral: #262e37;
+  --color-neutral-content: #d7dbe0;
+  --color-info: #7fb2e5;
+  --color-info-content: #0b1c2c;
+  --color-success: #8cc56a;
+  --color-success-content: #102008;
+  --color-warning: #e8c547;
+  --color-warning-content: #2a2003;
+  --color-error: #f0646a;
+  --color-error-content: #2d0607;
+  --radius-selector: 0.375rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.75rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+@plugin "daisyui/theme" {
+  name: "outpost-light";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+  --color-base-100: #fbfaf7;
+  --color-base-200: #f1efe9;
+  --color-base-300: #dedad0;
+  --color-base-content: #1d2228;
+  --color-primary: #8a5a12;
+  --color-primary-content: #ffffff;
+  --color-secondary: #e4e0d6;
+  --color-secondary-content: #1d2228;
+  --color-accent: #13786a;
+  --color-accent-content: #ffffff;
+  --color-neutral: #2b333c;
+  --color-neutral-content: #f1efe9;
+  --color-info: #245f96;
+  --color-info-content: #ffffff;
+  --color-success: #3f7a24;
+  --color-success-content: #ffffff;
+  --color-warning: #8a6a00;
+  --color-warning-content: #ffffff;
+  --color-error: #b4232a;
+  --color-error-content: #ffffff;
+  --radius-selector: 0.375rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.75rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+@theme inline {
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+
+  /* Move classifications: each hue is distinct for colour-blind readers too, and every
+     label also carries a symbol, so colour is never the only cue. */
+  --color-cls-brilliant: var(--cls-brilliant);
+  --color-cls-great: var(--cls-great);
+  --color-cls-best: var(--cls-best);
+  --color-cls-excellent: var(--cls-excellent);
+  --color-cls-good: var(--cls-good);
+  --color-cls-book: var(--cls-book);
+  --color-cls-forced: var(--cls-forced);
+  --color-cls-inaccuracy: var(--cls-inaccuracy);
+  --color-cls-mistake: var(--cls-mistake);
+  --color-cls-miss: var(--cls-miss);
+  --color-cls-blunder: var(--cls-blunder);
+
+  --color-eval-white: var(--eval-white);
+  --color-eval-black: var(--eval-black);
+}
+
+:root,
+[data-theme="outpost"] {
+  --cls-brilliant: #3cc8b8;
+  --cls-great: #6f9cf0;
+  --cls-best: #8cc56a;
+  --cls-excellent: #a9d18e;
+  --cls-good: #a5afa3;
+  --cls-book: #c49f78;
+  --cls-forced: #8e97a3;
+  --cls-inaccuracy: #e8c547;
+  --cls-mistake: #ef9440;
+  --cls-miss: #ee7aa0;
+  --cls-blunder: #f0646a;
+  --eval-white: #eceae4;
+  --eval-black: #2a3038;
+}
+
+[data-theme="outpost-light"] {
+  --cls-brilliant: #0f8577;
+  --cls-great: #2f5fc4;
+  --cls-best: #3f7a24;
+  --cls-excellent: #5a8a3c;
+  --cls-good: #66705f;
+  --cls-book: #8c6239;
+  --cls-forced: #5c6570;
+  --cls-inaccuracy: #8a6a00;
+  --cls-mistake: #b45a0c;
+  --cls-miss: #b3366b;
+  --cls-blunder: #b4232a;
+  --eval-white: #ffffff;
+  --eval-black: #2b333c;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --cls-brilliant: #0f8577;
+    --cls-great: #2f5fc4;
+    --cls-best: #3f7a24;
+    --cls-excellent: #5a8a3c;
+    --cls-good: #66705f;
+    --cls-book: #8c6239;
+    --cls-forced: #5c6570;
+    --cls-inaccuracy: #8a6a00;
+    --cls-mistake: #b45a0c;
+    --cls-miss: #b3366b;
+    --cls-blunder: #b4232a;
+    --eval-white: #ffffff;
+    --eval-black: #2b333c;
+  }
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: var(--color-base-200);
+}
+
+/* Numbers that change (evaluations, depth, clocks) keep their width. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Panels: one level of surface, a hairline border, no shadows. */
+.panel {
+  border-radius: var(--radius-box);
+  background: var(--color-base-100);
+  border: 1px solid color-mix(in oklab, var(--color-base-content) 9%, transparent);
+}
+
+.panel-title {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--color-base-content) 62%, transparent);
+}
+
+/* Visible keyboard focus everywhere, in the brand colour. */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* The evaluation bar slides. */
+/* Animated with a transform (composited, no layout) and a long ease-out, so frequent
+   engine updates blend into one fluid movement instead of stuttering. */
+.eval-fill {
+  transition: transform 450ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Horizontal scrollers (mobile move strip) without a visible scrollbar. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
