@@ -55,3 +55,43 @@ test("board colours, sound and sensitivity settings are kept", async ({ page }) 
   await expect(page.getByLabel("Sensibilité du classement")).toHaveValue("strict");
   await expect(page.getByRole("checkbox", { name: "Effets sonores" })).not.toBeChecked();
 });
+
+test("the header switches light and dark, and the gear opens quick settings with a live board", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const html = page.locator("html");
+  await expect(html).toHaveAttribute("data-theme", "outpost-light");
+  await page.getByRole("button", { name: "Passer en mode sombre" }).click();
+  await expect(html).toHaveAttribute("data-theme", "outpost");
+  await page.getByRole("button", { name: "Passer en mode clair" }).click();
+  await expect(html).toHaveAttribute("data-theme", "outpost-light");
+
+  await page.getByRole("button", { name: "Réglages", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Échiquier et affichage" });
+  await expect(dialog).toBeVisible();
+  const square = dialog.locator("#preview-board-square-a1");
+  const before = await square.evaluate((el) => getComputedStyle(el).backgroundColor);
+  await dialog.getByRole("radio", { name: "Noyer" }).click();
+  await expect
+    .poll(() => square.evaluate((el) => getComputedStyle(el).backgroundColor))
+    .not.toBe(before);
+  // The preview board is playable.
+  await dialog.locator("#preview-board-square-g1").click();
+  await dialog.locator("#preview-board-square-f3").click();
+  await expect(dialog.locator("#preview-board-square-f3 [data-piece]")).toHaveAttribute(
+    "data-piece",
+    "wN",
+  );
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+});
+
+test("the openings grid can be searched and grouped by ECO family", async ({ page }) => {
+  await page.goto("/openings");
+  await page.getByRole("radio", { name: "Famille ECO" }).click();
+  await expect(page.getByRole("heading", { name: "Défenses indiennes" })).toBeVisible();
+  await page.getByRole("searchbox").fill("grunfeld");
+  await expect(page.getByRole("link", { name: /Défense Grünfeld/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Partie italienne/ })).toHaveCount(0);
+});

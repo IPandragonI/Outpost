@@ -35,6 +35,13 @@ test("phone: import a game, navigate with large controls, switch panels without 
   await page.getByRole("tab", { name: "Coups" }).tap();
   await expect(moves.locator('[aria-current="step"]')).toHaveText("Qh4+");
 
+  // The advantage chart sits below the move assessment and above the moves.
+  const insightBox = (await page.getByTestId("move-box").boundingBox())!;
+  const graphBox = (await page.getByTestId("eval-graph").boundingBox())!;
+  const listBox = (await moves.boundingBox())!;
+  expect(graphBox.y).toBeGreaterThanOrEqual(insightBox.y + insightBox.height);
+  expect(graphBox.y + graphBox.height).toBeLessThanOrEqual(listBox.y);
+
   // No horizontal scrolling.
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - window.innerWidth,

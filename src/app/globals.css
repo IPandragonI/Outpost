@@ -4,7 +4,7 @@
   themes: false;
 }
 
-/* Outpost: warm paper surfaces with a brass accent, and a graphite dark counterpart. The
+/* Outpost: warm sand surfaces with a burnt-amber accent, and a dark walnut counterpart. The
    light theme is the app's default setting (applied as data-theme before first paint, see
    layout.tsx); without a data-theme ("system" setting) the OS preference picks one. The
    light theme deepens the hues where text needs WCAG AA contrast. */
@@ -13,26 +13,26 @@
   default: false;
   prefersdark: true;
   color-scheme: dark;
-  --color-base-100: #14181d;
-  --color-base-200: #0f1216;
-  --color-base-300: #232a32;
-  --color-base-content: #e3e6ea;
-  --color-primary: #d9a650;
-  --color-primary-content: #1d1405;
-  --color-secondary: #2b343e;
-  --color-secondary-content: #e3e6ea;
-  --color-accent: #4fb8a8;
-  --color-accent-content: #04201c;
-  --color-neutral: #262e37;
-  --color-neutral-content: #d7dbe0;
-  --color-info: #7fb2e5;
+  --color-base-100: #262019;
+  --color-base-200: #1c1813;
+  --color-base-300: #383026;
+  --color-base-content: #efe5d2;
+  --color-primary: #e2b46a;
+  --color-primary-content: #241705;
+  --color-secondary: #3a3127;
+  --color-secondary-content: #efe5d2;
+  --color-accent: #7fbf9a;
+  --color-accent-content: #0d2116;
+  --color-neutral: #322a21;
+  --color-neutral-content: #e6dccb;
+  --color-info: #8fb6dc;
   --color-info-content: #0b1c2c;
-  --color-success: #8cc56a;
-  --color-success-content: #102008;
-  --color-warning: #e8c547;
+  --color-success: #9cc777;
+  --color-success-content: #142108;
+  --color-warning: #e9c55a;
   --color-warning-content: #2a2003;
-  --color-error: #f0646a;
-  --color-error-content: #2d0607;
+  --color-error: #ef7469;
+  --color-error-content: #2d0805;
   --radius-selector: 0.375rem;
   --radius-field: 0.5rem;
   --radius-box: 0.75rem;
@@ -48,25 +48,25 @@
   default: true;
   prefersdark: false;
   color-scheme: light;
-  --color-base-100: #fbfaf7;
-  --color-base-200: #f1efe9;
-  --color-base-300: #dedad0;
-  --color-base-content: #1d2228;
-  --color-primary: #8a5a12;
+  --color-base-100: #fcf8f0;
+  --color-base-200: #f4ecdc;
+  --color-base-300: #e7dac0;
+  --color-base-content: #2b2219;
+  --color-primary: #96561a;
   --color-primary-content: #ffffff;
-  --color-secondary: #e4e0d6;
-  --color-secondary-content: #1d2228;
-  --color-accent: #13786a;
+  --color-secondary: #ebdfc6;
+  --color-secondary-content: #2b2219;
+  --color-accent: #2f6f55;
   --color-accent-content: #ffffff;
-  --color-neutral: #2b333c;
-  --color-neutral-content: #f1efe9;
-  --color-info: #245f96;
+  --color-neutral: #3a2f24;
+  --color-neutral-content: #f4ecdc;
+  --color-info: #2a5f8f;
   --color-info-content: #ffffff;
   --color-success: #3f7a24;
   --color-success-content: #ffffff;
   --color-warning: #8a6a00;
   --color-warning-content: #ffffff;
-  --color-error: #b4232a;
+  --color-error: #b0302a;
   --color-error-content: #ffffff;
   --radius-selector: 0.375rem;
   --radius-field: 0.5rem;
@@ -113,8 +113,8 @@
   --cls-mistake: #ef9440;
   --cls-miss: #ee7aa0;
   --cls-blunder: #f0646a;
-  --eval-white: #eceae4;
-  --eval-black: #2a3038;
+  --eval-white: #f1e9da;
+  --eval-black: #3a3128;
 }
 
 [data-theme="outpost-light"] {
@@ -130,7 +130,7 @@
   --cls-miss: #b3366b;
   --cls-blunder: #b4232a;
   --eval-white: #ffffff;
-  --eval-black: #2b333c;
+  --eval-black: #3a2f24;
 }
 
 @media (prefers-color-scheme: light) {
@@ -147,7 +147,7 @@
     --cls-miss: #b3366b;
     --cls-blunder: #b4232a;
     --eval-white: #ffffff;
-    --eval-black: #2b333c;
+    --eval-black: #3a2f24;
   }
 }
 

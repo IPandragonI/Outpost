@@ -112,7 +112,8 @@ test("is in French by default and switches to English, which is remembered", asy
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
     "Understand every game you play.",
   );
-  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("dialog").getByRole("link", { name: "All settings" }).click();
   await page.getByRole("radio", { name: "Français" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Réglages");
 });

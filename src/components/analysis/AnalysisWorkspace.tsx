@@ -397,6 +397,28 @@ export function AnalysisWorkspace() {
   const [tab, setTab] = useState<Tab>("moves");
   const activeTab: Tab = wide && tab === "moves" ? "engine" : tab;
 
+  // The review flow: the report is shown while the game is analyzed, then the moves take
+  // over, from the first move out of the opening book, to be stepped through one by one.
+  const reviewRef = useRef(reviewState);
+  useEffect(() => {
+    reviewRef.current = reviewState;
+  });
+  useEffect(
+    () =>
+      useAnalysis.subscribe((s, prev) => {
+        if (s.run.state === prev.run.state) return;
+        if (s.run.state === "running") {
+          setTab("report");
+        } else if (prev.run.state === "running" && s.run.state === "done") {
+          const { nodeIds, lastBookIndex } = reviewRef.current;
+          const first = nodeIds[Math.max(1, lastBookIndex + 1)] ?? nodeIds[1];
+          if (first) s.goTo(first);
+          setTab("moves");
+        }
+      }),
+    [],
+  );
+
   const node = getNode(tree, currentId);
   const lastMove = useMemo(() => {
     const uci = preview ? (preview.step > 0 ? preview.uci[preview.step - 1] : node.uci) : node.uci;
@@ -407,7 +429,8 @@ export function AnalysisWorkspace() {
   // board does not re-render — and its piece animations are not interrupted — on every
   // live update.
   const best = live.analysis?.bestMove ?? null;
-  const nextPreviewMove = preview && preview.step < preview.uci.length ? preview.uci[preview.step]! : null;
+  const nextPreviewMove =
+    preview && preview.step < preview.uci.length ? preview.uci[preview.step]! : null;
   const arrows = useMemo<Arrow[]>(() => {
     const list: Arrow[] = [];
     if (bestArrow && best && !preview) {
@@ -428,9 +451,12 @@ export function AnalysisWorkspace() {
     [badgeSquare, classification],
   );
 
-  const onMove = useCallback((move: BoardMove) => {
-    playMove(move);
-  }, [playMove]);
+  const onMove = useCallback(
+    (move: BoardMove) => {
+      playMove(move);
+    },
+    [playMove],
+  );
 
   const score = live.analysis?.score ?? null;
   const topColor = orientation === "white" ? "b" : "w";
@@ -446,10 +472,17 @@ export function AnalysisWorkspace() {
   const panels: Record<Tab, ReactNode> = {
     moves: (
       <div className="flex min-h-0 flex-1 flex-col gap-2">
-        {/* The current move's assessment comes first, above the moves. */}
-        <div className="px-1">
+        {/* The current move's assessment comes first, in a box that keeps its height. */}
+        <div className="h-36 shrink-0 overflow-y-auto px-1 lg:h-40" data-testid="move-box">
           <MoveInsight byNode={reviewState.byNode} />
         </div>
+        {/* Phones: the advantage chart sits between the assessment and the moves. */}
+        {!desktop && (
+          <div className="shrink-0 border-y border-base-content/10 py-1">
+            <h2 className="panel-title px-1">{t("graph.title")}</h2>
+            <EvalGraph byNode={reviewState.byNode} height={72} />
+          </div>
+        )}
         <div className="flex max-h-[50vh] min-h-40 flex-col overflow-hidden rounded-field border border-base-content/8 lg:max-h-none lg:flex-1">
           <MoveList byNode={reviewState.byNode} />
         </div>
@@ -514,8 +547,8 @@ export function AnalysisWorkspace() {
           className="panel flex max-h-[calc(100dvh-5.5rem)] min-h-0 flex-col gap-2 p-2"
           aria-label={t("tabs.moves")}
         >
-          {/* The current move's assessment comes first, above the moves. */}
-          <div className="max-h-[45%] shrink-0 overflow-y-auto border-b border-base-content/10 px-1 pb-2">
+          {/* The current move's assessment comes first, in a box that keeps its height. */}
+          <div className="h-44 shrink-0 overflow-y-auto border-b border-base-content/10 px-1 pb-2">
             <MoveInsight byNode={reviewState.byNode} />
           </div>
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-field">
@@ -530,11 +563,14 @@ export function AnalysisWorkspace() {
         className="panel flex min-h-0 flex-col lg:max-h-[calc(100dvh-5.5rem)]"
         aria-label={t("tabs.analysis")}
       >
-        {/* The advantage chart stays in view whatever the tab. */}
-        <div className="border-b border-base-content/10 px-2 pt-2 pb-1">
-          <h2 className="panel-title px-1">{t("graph.title")}</h2>
-          <EvalGraph byNode={reviewState.byNode} height={desktop ? 96 : 72} />
-        </div>
+        {/* The advantage chart stays in view whatever the tab (on phones, the moves tab
+            shows it between the move assessment and the moves instead). */}
+        {(desktop || activeTab !== "moves") && (
+          <div className="border-b border-base-content/10 px-2 pt-2 pb-1">
+            <h2 className="panel-title px-1">{t("graph.title")}</h2>
+            <EvalGraph byNode={reviewState.byNode} height={desktop ? 96 : 72} />
+          </div>
+        )}
         <Tabs tabs={tabs} active={activeTab} onChange={setTab} />
         <div
           role="tabpanel"

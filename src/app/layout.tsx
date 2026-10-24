@@ -21,8 +21,8 @@ const plexMono = IBM_Plex_Mono({
   weight: ["400", "500"],
 });
 
-const DARK_THEME_COLOR = "#0f1216";
-const LIGHT_THEME_COLOR = "#f1efe9";
+const DARK_THEME_COLOR = "#1c1813";
+const LIGHT_THEME_COLOR = "#f4ecdc";
 
 export const metadata: Metadata = {
   applicationName: "Outpost",

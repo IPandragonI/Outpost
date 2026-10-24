@@ -8,13 +8,13 @@ API routes or server actions.
 
 ```
 src/
-  app/                 routes: / (library), /analysis, /openings, /settings, /about, sw.ts
+  app/                 routes: /, /games, /analysis, /openings, /learn, /settings, /about, sw.ts
   components/          React UI by area (analysis, board, library, openings, settings, layout)
   features/            framework-free domain modules (unit tested)
     games/             PGN parser and exporter, variation tree
     engine/            UCI parsing, UciEngine, EngineService (queue), evaluation, cache
     classification/    classification, game review, precision, explanations, material/SEE
-    openings/          opening book queries, repertoire logic
+    openings/          opening book queries, catalogue, repertoire logic, drills (spaced repetition)
     analysis/          whole-game analysis runner, workspace store (Zustand), JSON export
     storage/           Dexie database and repositories
     settings/          settings store (persisted in IndexedDB)
@@ -92,14 +92,14 @@ requested (`analysis-cache.ts`). Transpositions share results, across games too.
 first use, not bundled. The dataset has no game statistics; the UI shows the number of named
 lines after each move and says so. `OpeningBook` is the provider interface; a larger
 user-supplied dataset in the same format could be loaded the same way.
-The `/openings` grid comes from a small hand-written catalogue (`features/openings/catalog.ts`:
-bilingual names, summaries, main line and variations). `tests/catalog.test.ts` checks that every
+The `/openings` grid comes from a hand-written catalogue (`features/openings/catalog.ts`:
+bilingual names, summaries, main line and variations), shown by side, by ECO family (the letter
+of the code) or by White's first move, with a search over names, variation names and ECO codes. `tests/catalog.test.ts` checks that every
 line is legal, shares the opening's defining moves and stays in the dataset; the dataset still
-names the positions shown on the board. `?view=studio` keeps the full explorer, repertoire and
-trainer.
+names the positions shown on the board. `?view=studio` keeps the full explorer and repertoire.
 
 **Persistence.** Dexie over IndexedDB, schema v1: `games`, `positions` (engine cache),
-`repertoires`, `settings`. A data-model change adds `version(n).upgrade()` in `database.ts`.
+`repertoires`, `settings` (also holds the trainer's progress). A data-model change adds `version(n).upgrade()` in `database.ts`.
 Storage errors become actionable messages, never swallowed. Only the theme is mirrored to
 `localStorage`, to apply it before first paint.
 
@@ -121,9 +121,32 @@ cross-origin isolation), newest first, standard chess only, following only links
 same API. It is the app's only request carrying user input, made on demand. Imported games
 keep their `Link` tag, which marks them as already imported in later fetches.
 
+**Repertoire trainer.** `/trainer` drills lines from the catalogue (one opening, or every
+opening of a side) or from a personal repertoire: the board plays the opponent's moves, the
+trainee must find theirs. A move from another line of the same set is pointed out, not counted
+as a mistake. Lines are scheduled by Leitner boxes (`features/openings/drill.ts`): a line
+played from memory without a mistake moves up a box (10 min, 1, 3, 7, 16, 35 days), any
+mistake or hint sends it back to the first. Guided mode shows every move and is not recorded.
+Progress is one `trainer-progress` record in the `settings` table, so no schema change.
+
+**Review flow.** While the whole game is analyzed, the report tab is shown and the live
+search on the board drops to one line at depth ≤ 14 (`useLiveAnalysis`): interactive searches
+preempt the review, so a light one hands the engine back quickly. When the run completes, the
+workspace moves to the moves view, on the first move out of the opening book. The move
+assessment box has a fixed height (one reason, the best move and its actions) so stepping
+through moves does not shift the layout; on phones the advantage chart sits between it and
+the move list.
+
 **Pages.** `/` presents the app; `/games` is the library and import; `/analysis`,
-`/openings`, `/learn` (lessons from `src/features/learn/lessons.ts`, bilingual data checked by
+`/openings`, `/trainer`, `/learn` (lessons from `src/features/learn/lessons.ts`, bilingual data checked by
 `tests/lessons.test.ts`, with exercise solutions confirmed by Stockfish) and `/settings`.
+
+**Appearance.** Warm sand surfaces with a burnt-amber accent (light) and a dark walnut
+counterpart, with a matching "Sand" board as the default. The header has a sun/moon toggle
+and a gear that opens quick settings (theme, language, board, pieces, coordinates,
+animations, sound) next to a playable preview board; the full settings stay at `/settings`.
+The pickers are shared (`components/settings/AppearanceControls.tsx`). The home page hero
+plays the Opera Game in a loop (pausable; static under reduced motion).
 
 **Smoothness.** Live engine output is throttled (200 ms), the game review is recomputed only
 when the main line changes, heavy panels (board, move list, graph, report) are memoized with

@@ -2,40 +2,29 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Chess } from "chess.js";
 import {
   ArrowRight,
   BookOpen,
   Cpu,
-  Download,
   GraduationCap,
+  Repeat,
   ShieldCheck,
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
-import { ChessBoard } from "@/components/board/ChessBoard";
 import type { GameRecord } from "@/features/storage/database";
 import { games } from "@/features/storage/repositories";
 import type { MessageKey } from "@/lib/i18n/translate";
 import { useT } from "@/lib/i18n/useT";
 import { START_FEN } from "@/lib/chess/position";
-
-/** Morphy's Opera Game, 1858, just after 16. Qb8+!! — the showcase position. */
-const SHOWCASE = (() => {
-  const chess = new Chess();
-  const moves =
-    "e4 e5 Nf3 d6 d4 Bg4 dxe5 Bxf3 Qxf3 dxe5 Bc4 Nf6 Qb3 Qe7 Nc3 c6 Bg5 b5 Nxb5 cxb5 Bxb5+ Nbd7 O-O-O Rd8 Rxd7 Rxd7 Rd1 Qe6 Bxd7+ Nxd7 Qb8+";
-  let last = null;
-  for (const san of moves.split(" ")) last = chess.move(san);
-  return { fen: chess.fen(), lastMove: { from: last!.from, to: last!.to } };
-})();
+import { HeroGame } from "./HeroGame";
 
 const FEATURES: { icon: LucideIcon; title: MessageKey; text: MessageKey }[] = [
   { icon: Cpu, title: "landing.f.engine.title", text: "landing.f.engine.text" },
   { icon: Sparkles, title: "landing.f.review.title", text: "landing.f.review.text" },
   { icon: BookOpen, title: "landing.f.openings.title", text: "landing.f.openings.text" },
+  { icon: Repeat, title: "landing.f.trainer.title", text: "landing.f.trainer.text" },
   { icon: GraduationCap, title: "landing.f.learn.title", text: "landing.f.learn.text" },
-  { icon: Download, title: "landing.f.import.title", text: "landing.f.import.text" },
   { icon: ShieldCheck, title: "landing.f.private.title", text: "landing.f.private.text" },
 ];
 
@@ -84,43 +73,54 @@ function RecentGames() {
 export function LandingPage() {
   const t = useT();
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-4 py-8 sm:py-12">
-      <section className="grid items-center gap-8 lg:grid-cols-[1.1fr_1fr]" aria-labelledby="hero">
-        <div className="flex flex-col gap-5">
-          <p className="text-sm font-medium text-primary">{t("landing.kicker")}</p>
-          <h1 id="hero" className="text-3xl leading-tight font-semibold tracking-tight sm:text-4xl">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-14 px-4 py-8 sm:py-10">
+      <section
+        className="grid items-center gap-10 lg:min-h-[calc(100dvh-9rem)] lg:grid-cols-[1.05fr_1fr] lg:gap-14"
+        aria-labelledby="hero"
+      >
+        <div className="flex flex-col gap-6">
+          <p className="w-fit rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-medium tracking-wide text-primary">
+            {t("landing.kicker")}
+          </p>
+          <h1
+            id="hero"
+            className="text-4xl leading-[1.08] font-semibold tracking-tight text-balance sm:text-5xl lg:text-[3.5rem]"
+          >
             {t("landing.title")}
           </h1>
-          <p className="max-w-xl text-base leading-7 text-base-content/75">{t("landing.lead")}</p>
+          <p className="max-w-xl text-lg leading-8 text-base-content/75">{t("landing.lead")}</p>
           <div className="flex flex-wrap gap-2">
-            <Link href="/games" className="btn btn-primary">
+            <Link href="/games" className="btn btn-lg btn-primary">
               {t("landing.cta.analyze")}
               <ArrowRight className="size-4" aria-hidden="true" />
             </Link>
-            <Link href={`/analysis?fen=${encodeURIComponent(START_FEN)}`} className="btn btn-soft">
+            <Link
+              href={`/analysis?fen=${encodeURIComponent(START_FEN)}`}
+              className="btn btn-soft btn-lg"
+            >
               {t("landing.cta.board")}
             </Link>
-            <Link href="/learn" className="btn btn-ghost">
-              {t("landing.cta.learn")}
-            </Link>
           </div>
-          <p className="flex items-center gap-1.5 text-sm text-base-content/60">
-            <ShieldCheck className="size-4 text-accent" aria-hidden="true" />
-            {t("library.privacy")}
-          </p>
+          <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-base-content/70">
+            <li>
+              <Link href="/trainer" className="flex items-center gap-1.5 hover:text-primary">
+                <Repeat className="size-4 text-primary" aria-hidden="true" />
+                {t("landing.cta.trainer")}
+              </Link>
+            </li>
+            <li>
+              <Link href="/learn" className="flex items-center gap-1.5 hover:text-primary">
+                <GraduationCap className="size-4 text-primary" aria-hidden="true" />
+                {t("landing.cta.learn")}
+              </Link>
+            </li>
+            <li className="flex items-center gap-1.5">
+              <ShieldCheck className="size-4 text-accent" aria-hidden="true" />
+              {t("library.privacy")}
+            </li>
+          </ul>
         </div>
-        <figure className="mx-auto w-full max-w-md">
-          <ChessBoard
-            id="landing-board"
-            fen={SHOWCASE.fen}
-            orientation="white"
-            lastMove={SHOWCASE.lastMove}
-            badge={{ square: "b8", classification: "brilliant" }}
-          />
-          <figcaption className="mt-2 text-center text-xs text-base-content/60">
-            {t("landing.showcase")}
-          </figcaption>
-        </figure>
+        <HeroGame />
       </section>
 
       <RecentGames />

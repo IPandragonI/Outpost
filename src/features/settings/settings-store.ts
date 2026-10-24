@@ -6,6 +6,7 @@ import { settingsStore } from "@/features/storage/repositories";
 
 export type ThemeSetting = "dark" | "light" | "system";
 export type BoardTheme =
+  | "sand"
   | "slate"
   | "walnut"
   | "sage"
@@ -57,7 +58,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   locale: "fr",
   theme: "light",
-  boardTheme: "slate",
+  boardTheme: "sand",
   pieceSet: "cburnett",
   customLight: "#e8e4d8",
   customDark: "#6d8a74",
@@ -152,6 +153,7 @@ export const useSettings = create<SettingsState>()(
 );
 
 export const BOARD_THEMES: Record<BoardTheme, { label: string; light: string; dark: string }> = {
+  sand: { label: "Sand", light: "#f0e2c6", dark: "#c29a6b" },
   slate: { label: "Slate", light: "#d9d5c8", dark: "#7a8898" },
   walnut: { label: "Walnut", light: "#ecdcbd", dark: "#a57c55" },
   sage: { label: "Sage", light: "#e4e7da", dark: "#86a07c" },
@@ -170,7 +172,7 @@ export function boardColors(
   if (settings.boardTheme === "custom") {
     return { light: settings.customLight, dark: settings.customDark };
   }
-  return BOARD_THEMES[settings.boardTheme] ?? BOARD_THEMES.slate;
+  return BOARD_THEMES[settings.boardTheme] ?? BOARD_THEMES.sand;
 }
 
 export const ANIMATION_MS: Record<AnimationSpeed, number> = { fast: 100, normal: 180, slow: 320 };

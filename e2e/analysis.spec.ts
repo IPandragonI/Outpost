@@ -23,9 +23,15 @@ test("import, analyze, review a blunder, explore theory, and keep everything aft
   await page.getByLabel(/Profondeur d.analyse/).selectOption("quick");
   await page.getByRole("button", { name: "Analyser la partie" }).click();
 
-  // 4. Engine evaluations become visible, for the whole game.
-  await expect(page.getByText(/Les 34 positions sont analysées/)).toBeVisible({ timeout: 180_000 });
+  // 4. Once the whole game is analyzed, the moves take over from the report: the board
+  // goes to the first move out of the opening book, ready to step through.
+  await expect(page.getByRole("tab", { name: "Moteur" })).toHaveAttribute("aria-selected", "true", {
+    timeout: 180_000,
+  });
+  await expect(page.getByTestId("move-insight")).toBeVisible();
   await expect(page.getByTestId("eval-graph")).toBeVisible();
+  await page.getByRole("tab", { name: "Bilan" }).click();
+  await expect(page.getByText(/Les 34 positions sont analysées/)).toBeVisible();
 
   // 5. Classifications appear, with each player's precision.
   const report = page.getByTestId("game-report");
@@ -36,7 +42,7 @@ test("import, analyze, review a blunder, explore theory, and keep everything aft
   await report.getByRole("heading", { name: "Plus grosses erreurs" }).waitFor();
   await report.locator("ul").first().getByRole("button").first().click();
   const insight = page.getByTestId("move-insight");
-  await expect(insight.getByText("Meilleur coup trouvé par Stockfish")).toBeVisible();
+  await expect(insight.getByText("Meilleur coup", { exact: true })).toBeVisible();
   await insight.getByRole("button", { name: "Voir la meilleure ligne" }).click();
   const preview = page.getByRole("region", { name: "Aperçu de ligne" });
   await expect(preview).toBeVisible();

@@ -20,14 +20,9 @@ import {
   serviceWorkerActive,
 } from "@/features/offline/offline-assets";
 import {
-  BOARD_THEMES,
-  PIECE_SETS,
   useSettings,
   type AnimationSpeed,
-  type BoardTheme,
-  type PieceSet,
   type Sensitivity,
-  type ThemeSetting,
 } from "@/features/settings/settings-store";
 import { describeStorageError } from "@/features/storage/database";
 import {
@@ -42,7 +37,14 @@ import { downloadText } from "@/lib/download";
 import { playSound } from "@/lib/sound";
 import { useEngineStatus } from "@/hooks/useLiveAnalysis";
 import { useOnline } from "@/hooks/useOnline";
-import { useLocale, useT } from "@/lib/i18n/useT";
+import { useT } from "@/lib/i18n/useT";
+import {
+  BoardThemePicker,
+  LanguageChoice,
+  PieceSetPicker,
+  ThemeChoice,
+  Toggle,
+} from "./AppearanceControls";
 
 function Section({
   title,
@@ -76,26 +78,6 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
       </div>
       <div className="flex items-center gap-2">{children}</div>
     </div>
-  );
-}
-
-function Toggle({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean;
-  onChange(v: boolean): void;
-  label: string;
-}) {
-  return (
-    <input
-      type="checkbox"
-      className="toggle toggle-primary"
-      checked={checked}
-      onChange={(e) => onChange(e.target.checked)}
-      aria-label={label}
-    />
   );
 }
 
@@ -342,7 +324,6 @@ export function SettingsPage() {
   const status = useEngineStatus();
   const set = settings.set;
   const t = useT();
-  const locale = useLocale();
   const device = useSyncExternalStore(noSubscription, deviceInfo, serverDeviceInfo);
 
   return (
@@ -351,72 +332,13 @@ export function SettingsPage() {
 
       <Section title={t("settings.appearance")}>
         <Row label={t("settings.language")}>
-          <div className="join" role="radiogroup" aria-label={t("settings.language")}>
-            {(["fr", "en"] as const).map((lang) => (
-              <button
-                key={lang}
-                type="button"
-                role="radio"
-                lang={lang}
-                aria-checked={locale === lang}
-                className={`btn join-item btn-sm ${locale === lang ? "btn-active" : ""}`}
-                onClick={() => set({ locale: lang })}
-              >
-                {lang === "fr" ? "Français" : "English"}
-              </button>
-            ))}
-          </div>
+          <LanguageChoice />
         </Row>
         <Row label={t("settings.theme")}>
-          <div className="join" role="radiogroup" aria-label={t("settings.theme")}>
-            {(["dark", "light", "system"] as ThemeSetting[]).map((th) => (
-              <button
-                key={th}
-                type="button"
-                role="radio"
-                aria-checked={settings.theme === th}
-                className={`btn join-item btn-sm ${settings.theme === th ? "btn-active" : ""}`}
-                onClick={() => set({ theme: th })}
-              >
-                {t(`settings.theme.${th}`)}
-              </button>
-            ))}
-          </div>
+          <ThemeChoice />
         </Row>
         <Row label={t("settings.board")}>
-          <div
-            className="flex max-w-xs flex-wrap justify-end gap-2"
-            role="radiogroup"
-            aria-label={t("settings.boardColours")}
-          >
-            {(Object.keys(BOARD_THEMES) as BoardTheme[]).map((key) => {
-              const theme =
-                key === "custom"
-                  ? { light: settings.customLight, dark: settings.customDark }
-                  : BOARD_THEMES[key];
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  role="radio"
-                  aria-checked={settings.boardTheme === key}
-                  aria-label={t(`settings.boardTheme.${key}`)}
-                  title={t(`settings.boardTheme.${key}`)}
-                  onClick={() => set({ boardTheme: key })}
-                  className={`grid size-11 grid-cols-2 overflow-hidden rounded-field ring-offset-2 ring-offset-base-100 ${
-                    settings.boardTheme === key
-                      ? "ring-2 ring-primary"
-                      : "ring-1 ring-base-content/15"
-                  }`}
-                >
-                  <span style={{ background: theme.light }} />
-                  <span style={{ background: theme.dark }} />
-                  <span style={{ background: theme.dark }} />
-                  <span style={{ background: theme.light }} />
-                </button>
-              );
-            })}
-          </div>
+          <BoardThemePicker className="max-w-xs justify-end" />
         </Row>
         {settings.boardTheme === "custom" && (
           <Row label={t("settings.customColors")}>
@@ -441,29 +363,7 @@ export function SettingsPage() {
           </Row>
         )}
         <Row label={t("settings.pieces")}>
-          <div
-            className="flex max-w-xs flex-wrap justify-end gap-2"
-            role="radiogroup"
-            aria-label={t("settings.pieceSet")}
-          >
-            {(Object.keys(PIECE_SETS) as PieceSet[]).map((key) => (
-              <button
-                key={key}
-                type="button"
-                role="radio"
-                aria-checked={settings.pieceSet === key}
-                aria-label={PIECE_SETS[key].label}
-                title={PIECE_SETS[key].label}
-                onClick={() => set({ pieceSet: key })}
-                className={`flex size-11 items-center justify-center rounded-field bg-base-300 p-1 ${
-                  settings.pieceSet === key ? "ring-2 ring-primary" : ""
-                }`}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={`/pieces/${key}/wN.svg`} alt="" className="size-full" />
-              </button>
-            ))}
-          </div>
+          <PieceSetPicker className="max-w-xs justify-end" />
         </Row>
         <Row label={t("settings.coordinates")}>
           <Toggle

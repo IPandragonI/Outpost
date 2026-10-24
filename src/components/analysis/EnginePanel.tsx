@@ -140,6 +140,14 @@ export function EnginePanel({ live, fen }: { live: LiveAnalysis; fen: string }) 
         {live.searching && enabled && (
           <span className="loading loading-xs loading-dots text-primary" aria-hidden="true" />
         )}
+        {live.light && enabled && (
+          <span
+            className="rounded-full bg-primary/12 px-2 py-0.5 text-[11px] text-primary"
+            title={t("engine.lightHint")}
+          >
+            {t("engine.light")}
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-1">
           <label className="sr-only" htmlFor="multipv">
             {t("engine.lineCount")}

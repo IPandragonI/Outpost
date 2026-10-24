@@ -18,10 +18,15 @@ export function useEngineStatus(): EngineStatus {
   );
 }
 
+/** While the whole game is reviewed, the board gets a short single-line search only. */
+const REVIEW_DEPTH = 14;
+
 export interface LiveAnalysis {
   /** Best known analysis of `fen` (live search in progress, or a stored result). */
   analysis: PositionAnalysis | null;
   searching: boolean;
+  /** The game review is running: the live search is kept light to leave it the engine. */
+  light: boolean;
   error: string | null;
   /** Searches this position again, deeper than before. */
   deeper(): void;
@@ -30,6 +35,10 @@ export interface LiveAnalysis {
 /**
  * Analyzes `fen` with the interactive engine priority while it is on the board.
  *
+ * While the whole-game review runs, the board's search is cut to one line at a modest
+ * depth: interactive searches preempt the review, so a light one hands the engine back
+ * quickly and the report is ready sooner.
+ *
  * Results are tied to the position they were asked for: when the board changes, the
  * running search is cancelled and its late updates are ignored, so a stale evaluation is
  * never shown for a new position. Each result is also recorded in the store, so going
@@ -37,8 +46,11 @@ export interface LiveAnalysis {
  */
 export function useLiveAnalysis(fen: string): LiveAnalysis {
   const enabled = useSettings((s) => s.liveEngine);
-  const multiPv = useSettings((s) => s.liveMultiPv);
-  const baseDepth = useSettings((s) => s.liveDepth);
+  const light = useAnalysis((s) => s.run.state === "running");
+  const settingsMultiPv = useSettings((s) => s.liveMultiPv);
+  const settingsDepth = useSettings((s) => s.liveDepth);
+  const multiPv = light ? 1 : settingsMultiPv;
+  const baseDepth = light ? Math.min(settingsDepth, REVIEW_DEPTH) : settingsDepth;
   const recordLive = useAnalysis((s) => s.recordLive);
   const key = positionKey(fen);
   const stored = useAnalysis((s) => s.livePositions[key] ?? s.gamePositions[key] ?? null);
@@ -109,6 +121,7 @@ export function useLiveAnalysis(fen: string): LiveAnalysis {
   return {
     analysis,
     searching,
+    light,
     error: current?.error ?? null,
     deeper: () =>
       setExtraDepth((d) => ({

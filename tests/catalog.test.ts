@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { Chess } from "chess.js";
 import { describe, expect, it } from "vitest";
-import { CATALOG } from "@/features/openings/catalog";
+import { CATALOG, ECO_FAMILIES, ecoFamily, searchCatalog } from "@/features/openings/catalog";
 import type { OpeningBookFile } from "@/features/openings/book-format";
 import { OpeningBook } from "@/features/openings/opening-book";
 
@@ -55,5 +55,19 @@ describe("openings catalogue", () => {
       }
     }
     expect(weak).toEqual([]);
+  });
+
+  it("files every opening under one ECO family", () => {
+    const families = new Set(ECO_FAMILIES.map((f) => f.id));
+    for (const o of CATALOG) expect(families.has(ecoFamily(o)), o.id).toBe(true);
+  });
+
+  it("searches names in both languages, line names and ECO codes, ignoring accents", () => {
+    const ids = (q: string) => searchCatalog(q).map((o) => o.id);
+    expect(ids("grunfeld")).toEqual(["grunfeld"]);
+    expect(ids("najdorf")).toEqual(["sicilian"]);
+    expect(ids("B01")).toEqual(["scandinavian"]);
+    expect(ids("défense française")).toContain("french");
+    expect(ids("  ")).toHaveLength(CATALOG.length);
   });
 });

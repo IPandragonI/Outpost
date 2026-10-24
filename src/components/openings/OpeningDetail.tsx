@@ -12,6 +12,7 @@ import {
   ExternalLink,
   Pause,
   Play,
+  Repeat,
 } from "lucide-react";
 import type { Arrow } from "react-chessboard";
 import { ChessBoard } from "@/components/board/ChessBoard";
@@ -92,10 +93,16 @@ export function OpeningDetail({ opening }: { opening: CatalogOpening }) {
       className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6"
       data-testid="opening-detail"
     >
-      <Link href="/openings" className="btn self-start btn-ghost btn-sm">
-        <ArrowLeft className="size-4" aria-hidden="true" />
-        {t("openingsHome.back")}
-      </Link>
+      <div className="flex flex-wrap items-center gap-2">
+        <Link href="/openings" className="btn btn-ghost btn-sm">
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          {t("openingsHome.back")}
+        </Link>
+        <Link href={`/trainer?o=${opening.id}`} className="btn ml-auto btn-soft btn-primary btn-sm">
+          <Repeat className="size-4" aria-hidden="true" />
+          {t("openingsHome.train")}
+        </Link>
+      </div>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
         <section className="flex flex-col gap-2" aria-label={t("openings.board")}>
           <div className="mx-auto w-full lg:max-w-[min(100%,calc(100dvh-14rem))]">

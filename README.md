@@ -29,7 +29,7 @@ with English available (header switch or Settings).
   that plays through the main line and its variations (step by step or automatically, next
   move shown as an arrow). Every catalogue line is legal and checked against the opening
   dataset by the tests. The advanced studio keeps position-based identification, theory moves
-  with Stockfish's evaluation, opening search, personal repertoires and a trainer.
+  with Stockfish's evaluation, opening search and a personal repertoires.
 - **Settings**: board colours (presets or custom), six piece sets, animation speed, move
   sounds (synthesized in the browser, with volume), engine depth, threads, memory and the
   sensitivity of move classification (lenient, standard, strict).

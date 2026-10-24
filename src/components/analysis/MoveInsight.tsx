@@ -40,13 +40,16 @@ function MoveInsightImpl({ byNode }: { byNode: Record<NodeId, MoveClassification
     if (!before?.lines.length || !after) return null;
     try {
       return {
-        value: classifyMove({
-          fenBefore: parent.fen,
-          uci: node.uci,
-          before,
-          after,
-          isBook: Boolean(book?.has(node.fen)) && node.ply <= 30,
-        }, rulesFor(sensitivity)),
+        value: classifyMove(
+          {
+            fenBefore: parent.fen,
+            uci: node.uci,
+            before,
+            after,
+            isBook: Boolean(book?.has(node.fen)) && node.ply <= 30,
+          },
+          rulesFor(sensitivity),
+        ),
         live: true,
       };
     } catch {
@@ -87,130 +90,109 @@ function MoveInsightImpl({ byNode }: { byNode: Record<NodeId, MoveClassification
   const error = isError(r.classification);
   const opening = r.classification === "book" ? book?.namesAt(node.fen)[0] : null;
 
+  const showBest =
+    !r.isBestMove &&
+    r.classification !== "book" &&
+    r.classification !== "forced" &&
+    explanation.bestSan;
+
   return (
     <article
-      className="flex flex-col gap-2"
+      className="flex flex-col gap-1.5"
       aria-label={t("insight.label")}
       data-testid="move-insight"
     >
-      <header className="flex items-start gap-2">
-        <ClassificationBadge
-          classification={r.classification}
-          className="mt-0.5 size-6 text-[11px]"
-        />
-        <div className="min-w-0 flex-1">
-          <h3
-            className={`text-[15px] leading-6 font-semibold ${CLASSIFICATION_TEXT[r.classification]}`}
-          >
-            {explanation.headline}
-          </h3>
-          <p className="text-xs text-base-content/55">
-            {t(`cls.${r.classification}.desc`)}
-            {result.live && ` ${t("insight.judgedLive")}`}
-          </p>
-        </div>
+      <header className="flex items-center gap-2">
+        <ClassificationBadge classification={r.classification} className="size-6 text-[11px]" />
+        <h3
+          className={`min-w-0 flex-1 truncate text-[15px] leading-6 font-semibold ${CLASSIFICATION_TEXT[r.classification]}`}
+          title={`${explanation.headline} — ${t(`cls.${r.classification}.desc`)}${result.live ? ` ${t("insight.judgedLive")}` : ""}`}
+        >
+          {explanation.headline}
+        </h3>
+        <span className="tabular shrink-0 font-mono text-xs text-base-content/55">
+          {formatScore(r.playedScore)}
+        </span>
         {deleteButton}
       </header>
 
-      {opening && (
-        <p className="text-sm">
+      {/* One line of context: the opening for book moves, the main reason otherwise. */}
+      {opening ? (
+        <p className="truncate text-sm">
           <span className="font-mono text-xs text-base-content/55">{opening.eco}</span>{" "}
           {opening.name}
         </p>
+      ) : (
+        explanation.details[0] && (
+          <p className="line-clamp-2 text-sm leading-5 text-base-content/80">
+            {explanation.details[0]}
+          </p>
+        )
       )}
 
-      {explanation.details.length > 0 && (
-        <ul className="flex flex-col gap-1 text-sm leading-5 text-base-content/85">
-          {explanation.details.map((d) => (
-            <li key={d}>{d}</li>
-          ))}
-        </ul>
-      )}
-
-      {!r.isBestMove &&
-        r.classification !== "book" &&
-        r.classification !== "forced" &&
-        explanation.bestSan && (
-          <div
-            className={`rounded-field border px-3 py-2 ${error ? "border-base-content/15 bg-base-200" : "border-transparent bg-base-200/60"}`}
-          >
-            <dl className="flex flex-col gap-1 text-sm">
-              <div className="flex flex-wrap items-baseline gap-x-2">
-                <dt className="text-base-content/60">{t("insight.played")}</dt>
-                <dd className="font-mono">
-                  {node.san}{" "}
-                  <span className="text-base-content/55">{formatScore(r.playedScore)}</span>
-                </dd>
-              </div>
-              <div className="flex flex-wrap items-baseline gap-x-2">
-                <dt className="text-base-content/60">{t("insight.bestByStockfish")}</dt>
-                <dd className="font-mono font-semibold text-cls-best">
-                  {explanation.bestSan}{" "}
-                  <span className="font-normal text-base-content/55">
-                    {formatScore(r.bestScore)}
-                  </span>
-                </dd>
-              </div>
-              <div className="flex flex-wrap items-baseline gap-x-2">
-                <dt className="text-base-content/60">{t("insight.loss")}</dt>
-                <dd className="tabular">
-                  {t("insight.lossChances", { percent: Math.round(r.loss * 100) })}
-                  <span className="text-base-content/55">
-                    {" "}
-                    · {t("insight.lossPawns", { pawns: (r.cpLoss / 100).toFixed(2) })}
-                  </span>
-                </dd>
-              </div>
-            </dl>
-            {explanation.bestLineSan.length > 1 && (
-              <p className="mt-1.5 font-mono text-[12.5px] text-base-content/70">
-                {t("insight.bestLine", { line: explanation.bestLineSan.slice(0, 8).join(" ") })}
-              </p>
+      {showBest && (
+        <div
+          className={`flex flex-col gap-1.5 rounded-field px-2.5 py-1.5 ${error ? "bg-base-200" : "bg-base-200/60"}`}
+        >
+          <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+            <span className="text-base-content/60">{t("insight.bestByStockfish")}</span>
+            <span className="font-mono font-semibold text-cls-best">{explanation.bestSan}</span>
+            <span className="tabular font-mono text-xs text-base-content/55">
+              {formatScore(r.bestScore)}
+            </span>
+            {r.loss > 0.005 && (
+              <span
+                className="tabular ml-auto text-xs text-base-content/55"
+                title={`${t("insight.lossChances", { percent: Math.round(r.loss * 100) })} · ${t("insight.lossPawns", { pawns: (r.cpLoss / 100).toFixed(2) })}`}
+              >
+                {t("insight.lossShort", { percent: Math.round(r.loss * 100) })}
+              </span>
             )}
-            <div className="mt-2 flex flex-wrap gap-1.5">
+          </p>
+          <div className="flex flex-wrap gap-1">
+            <button
+              type="button"
+              className="btn btn-soft btn-success btn-xs"
+              onClick={() =>
+                showPreview(
+                  parent.id,
+                  r.bestLine,
+                  t("insight.previewBest", { san: explanation.bestSan ?? "" }),
+                  1,
+                )
+              }
+            >
+              <Play className="size-3" aria-hidden="true" />
+              {t("insight.showBest")}
+            </button>
+            {explanation.replySan.length > 0 && error && (
               <button
                 type="button"
-                className="btn btn-soft btn-sm btn-success"
+                className="btn btn-soft btn-xs"
                 onClick={() =>
                   showPreview(
-                    parent.id,
-                    r.bestLine,
-                    t("insight.previewBest", { san: explanation.bestSan ?? "" }),
+                    node.id,
+                    r.replyLine,
+                    t("insight.previewReply", { san: node.san ?? "" }),
                     1,
                   )
                 }
               >
-                <Play className="size-3.5" aria-hidden="true" />
-                {t("insight.showBest")}
+                <Swords className="size-3" aria-hidden="true" />
+                {t("insight.showPunishment")}
               </button>
-              {explanation.replySan.length > 0 && error && (
-                <button
-                  type="button"
-                  className="btn btn-soft btn-sm"
-                  onClick={() =>
-                    showPreview(
-                      node.id,
-                      r.replyLine,
-                      t("insight.previewReply", { san: node.san ?? "" }),
-                      1,
-                    )
-                  }
-                >
-                  <Swords className="size-3.5" aria-hidden="true" />
-                  {t("insight.showPunishment")}
-                </button>
-              )}
-              <button
-                type="button"
-                className="btn btn-ghost btn-sm"
-                onClick={() => r.bestMove && playLine(parent.id, [r.bestMove])}
-                title={t("insight.tryHint")}
-              >
-                {t("insight.try", { san: explanation.bestSan ?? "" })}
-              </button>
-            </div>
+            )}
+            <button
+              type="button"
+              className="btn btn-ghost btn-xs"
+              onClick={() => r.bestMove && playLine(parent.id, [r.bestMove])}
+              title={t("insight.tryHint")}
+            >
+              {t("insight.try", { san: explanation.bestSan ?? "" })}
+            </button>
           </div>
-        )}
+        </div>
+      )}
     </article>
   );
 }

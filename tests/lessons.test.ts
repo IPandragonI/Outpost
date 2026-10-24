@@ -58,7 +58,15 @@ describe("endgame verdicts, checked by Stockfish", () => {
       const result = await engine.search(lesson.fen, { depth: 20, multiPv: 1 });
       const s = result.score;
       const verdict =
-        s.kind === "mate" ? (s.winner === "w" ? "win" : "loss") : s.cp >= 300 ? "win" : Math.abs(s.cp) < 250 ? "draw" : "unclear";
+        s.kind === "mate"
+          ? s.winner === "w"
+            ? "win"
+            : "loss"
+          : s.cp >= 300
+            ? "win"
+            : Math.abs(s.cp) < 250
+              ? "draw"
+              : "unclear";
       expect(verdict, JSON.stringify(s)).toBe(lesson.verdict);
     });
   }
