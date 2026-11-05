@@ -114,6 +114,8 @@ test("is in French by default and switches to English, which is remembered", asy
   );
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("dialog").getByRole("link", { name: "All settings" }).click();
+  await page.waitForURL("**/settings");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("radio", { name: "Français" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Réglages");
 });

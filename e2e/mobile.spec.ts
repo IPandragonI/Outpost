@@ -47,7 +47,7 @@ test("phone: import a game, navigate with large controls, switch panels without 
   await expect(drawer).toBeVisible();
   await drawer.getByRole("link", { name: "Parties", exact: true }).tap();
   await expect(page).toHaveURL(/\/games/);
-  await expect(drawer).toBeHidden();
+  await expect(drawer).toHaveAttribute("inert", "");
 
   // No horizontal scrolling.
   const overflow = await page.evaluate(
