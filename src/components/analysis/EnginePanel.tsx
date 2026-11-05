@@ -103,6 +103,7 @@ export function EnginePanel({ live, fen }: { live: LiveAnalysis; fen: string }) 
   const status = useEngineStatus();
   const enabled = useSettings((s) => s.liveEngine);
   const multiPv = useSettings((s) => s.liveMultiPv);
+  const liveDepth = useSettings((s) => s.liveDepth);
   const setSettings = useSettings((s) => s.set);
   const end = gameEndOf(fen);
   const analysis = live.analysis;
@@ -152,6 +153,24 @@ export function EnginePanel({ live, fen }: { live: LiveAnalysis; fen: string }) 
           <label className="sr-only" htmlFor="multipv">
             {t("engine.lineCount")}
           </label>
+          <label className="sr-only" htmlFor="live-depth">
+            {t("engine.depthSetting")}
+          </label>
+          <select
+            id="live-depth"
+            className="select w-auto select-xs"
+            value={liveDepth}
+            onChange={(e) => setSettings({ liveDepth: Number(e.target.value) })}
+            title={t("engine.depthSetting")}
+          >
+            {[...new Set([14, 18, 22, 26, 30, liveDepth])]
+              .sort((a, b) => a - b)
+              .map((n) => (
+                <option key={n} value={n}>
+                  {t("engine.depth", { n })}
+                </option>
+              ))}
+          </select>
           <select
             id="multipv"
             className="select w-auto select-xs"
@@ -176,6 +195,34 @@ export function EnginePanel({ live, fen }: { live: LiveAnalysis; fen: string }) 
           </button>
         </div>
       </div>
+
+      {enabled && analysis && !end && analysis.lines.length > 0 && (
+        <dl
+          className="grid grid-cols-4 gap-2 rounded-field bg-base-200 px-3 py-2 text-center"
+          data-testid="engine-summary"
+        >
+          <div>
+            <dt className="panel-title">{t("engine.evaluation")}</dt>
+            <dd className="tabular font-mono text-lg font-semibold">
+              {formatScore(analysis.score)}
+            </dd>
+          </div>
+          <div>
+            <dt className="panel-title">{t("engine.bestMove")}</dt>
+            <dd className="font-mono text-lg font-semibold text-cls-best">
+              {analysis.bestMove ? (uciLineToSan(fen, [analysis.bestMove])[0] ?? "—") : "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="panel-title">{t("engine.depthShort")}</dt>
+            <dd className="tabular font-mono text-lg">{analysis.depth}</dd>
+          </div>
+          <div>
+            <dt className="panel-title">{t("engine.time")}</dt>
+            <dd className="tabular font-mono text-lg">{(analysis.timeMs / 1000).toFixed(1)}s</dd>
+          </div>
+        </dl>
+      )}
 
       {status.state === "error" && enabled && (
         <div role="alert" className="alert alert-soft py-2 text-sm alert-error">

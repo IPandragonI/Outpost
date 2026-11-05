@@ -65,7 +65,7 @@ function ExercisePanel({ lesson, exercise }: { lesson: Lesson; exercise: Exercis
   const onMove = (move: BoardMove) => {
     const result = checkExerciseMove(exercise, move);
     if (result.state === "solved") play({ san: result.san });
-    else if (result.state === "wrong") play("error");
+    else if (result.state === "wrong") play("illegal");
     setAttempt(result);
     if (result.state === "solved" && !solvedLessons.includes(lesson.id)) {
       set({ solvedLessons: [...solvedLessons, lesson.id] });

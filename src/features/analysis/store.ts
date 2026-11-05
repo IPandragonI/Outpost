@@ -58,6 +58,8 @@ export interface AnalysisRun {
   done: number;
   total: number;
   error?: string;
+  /** The user stopped the run: it is resumed on request, never started again by itself. */
+  userStopped?: boolean;
 }
 
 interface AnalysisState {
@@ -106,7 +108,8 @@ interface AnalysisState {
   keepPreview(): void;
   recordLive(analysis: PositionAnalysis): void;
   startGameAnalysis(presetId: string): Promise<void>;
-  cancelGameAnalysis(): void;
+  /** Stops the running analysis; `byUser` marks a stop the user asked for. */
+  cancelGameAnalysis(byUser?: boolean): void;
   restoreGameAnalysis(presetId: string): Promise<void>;
   setTitle(title: string): Promise<void>;
   /** Saves an unsaved board to the library. */
@@ -198,11 +201,13 @@ export const useAnalysis = create<AnalysisState>()((set, get) => {
           gamePositions: {},
           livePositions: {},
           run: IDLE_RUN,
-          loading: false,
         });
+        // Stored results are looked up before the game is shown as loaded, so the screen
+        // can tell "not analyzed" from "analysis found" when it decides to start one.
         if (record.analysis.presetId && record.analysis.state !== "none") {
           await get().restoreGameAnalysis(record.analysis.presetId);
         }
+        if (get().gameId === id) set({ loading: false });
       } catch (error) {
         set({ loading: false, loadError: storageProblem(error) });
       }
@@ -458,11 +463,33 @@ export const useAnalysis = create<AnalysisState>()((set, get) => {
       }
     },
 
-    cancelGameAnalysis() {
+    cancelGameAnalysis(byUser = false) {
       if (runController) {
         runController.abort();
         runController = null;
-        set((s) => ({ run: s.run.state === "running" ? { ...s.run, state: "cancelled" } : s.run }));
+        set((s) => ({
+          run:
+            s.run.state === "running"
+              ? { ...s.run, state: "cancelled", userStopped: byUser || undefined }
+              : s.run,
+        }));
+        if (byUser) {
+          // Keep what was analyzed so far for a later resume.
+          const { gameId, run } = get();
+          if (gameId && run.presetId) {
+            void games
+              .update(gameId, {
+                analysis: {
+                  state: "partial",
+                  presetId: run.presetId,
+                  engine: getEngineService().engineId,
+                  analyzed: run.done,
+                  total: run.total,
+                },
+              })
+              .catch((error: unknown) => set({ saveError: storageProblem(error) }));
+          }
+        }
       }
     },
 

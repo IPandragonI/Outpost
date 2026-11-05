@@ -18,20 +18,22 @@ test("import, analyze, review a blunder, explore theory, and keep everything aft
   await expect(page.getByTestId("move-list").getByRole("button", { name: "Rd8#" })).toBeVisible();
   const gameUrl = page.url();
 
-  // 3. Start the analysis (quick preset keeps the test short).
-  await page.getByRole("tab", { name: "Bilan" }).click();
+  // 3. Game Review is the first tab and is selected; the analysis started by itself.
+  const tabs = page.getByRole("tab");
+  await expect(tabs.nth(0)).toHaveText(/Bilan/);
+  await expect(tabs.nth(1)).toHaveText("Moteur");
+  await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Ouvertures" })).toHaveCount(0);
+  await expect(page.getByText(/Analyse du coup/)).toBeVisible();
+  // Switch to the quick preset to keep the test short: stop, pick it, start again.
+  await page.getByRole("button", { name: "Arrêter" }).click();
   await page.getByLabel(/Profondeur d.analyse/).selectOption("quick");
   await page.getByRole("button", { name: "Analyser la partie" }).click();
 
-  // 4. Once the whole game is analyzed, the moves take over from the report: the board
-  // goes to the first move out of the opening book, ready to step through.
-  await expect(page.getByRole("tab", { name: "Moteur" })).toHaveAttribute("aria-selected", "true", {
-    timeout: 180_000,
-  });
-  await expect(page.getByTestId("move-insight")).toBeVisible();
+  // 4. Results fill in progressively; when all positions are done the run says so.
+  await expect(page.getByText(/Analyse terminée/)).toBeVisible({ timeout: 180_000 });
+  await expect(page.getByText("34 positions analysées sur 34")).toBeVisible();
   await expect(page.getByTestId("eval-graph")).toBeVisible();
-  await page.getByRole("tab", { name: "Bilan" }).click();
-  await expect(page.getByText(/Les 34 positions sont analysées/)).toBeVisible();
 
   // 5. Classifications appear, with each player's precision.
   const report = page.getByTestId("game-report");
@@ -40,7 +42,12 @@ test("import, analyze, review a blunder, explore theory, and keep everything aft
 
   // 6. Select an error and view the recommended alternative.
   await report.getByRole("heading", { name: "Plus grosses erreurs" }).waitFor();
-  await report.locator("ul").first().getByRole("button").first().click();
+  await report
+    .getByRole("heading", { name: "Plus grosses erreurs" })
+    .locator("xpath=following-sibling::ul")
+    .getByRole("button")
+    .first()
+    .click();
   const insight = page.getByTestId("move-insight");
   await expect(insight.getByText("Meilleur coup", { exact: true })).toBeVisible();
   await insight.getByRole("button", { name: "Voir la meilleure ligne" }).click();
@@ -51,7 +58,7 @@ test("import, analyze, review a blunder, explore theory, and keep everything aft
 
   // 7. Open the opening explorer at the start of the game.
   await page.keyboard.press("Home");
-  await page.getByRole("tab", { name: "Ouvertures" }).click();
+  await page.getByText("Explorateur d’ouvertures").click();
   const explorer = page.getByTestId("opening-explorer");
   await expect(explorer.getByRole("cell", { name: /^e4/ })).toBeVisible();
 
@@ -67,8 +74,7 @@ test("import, analyze, review a blunder, explore theory, and keep everything aft
   // 9. Reload: the game, its explored variation and its analysis are still there.
   await page.goto(gameUrl);
   await expect(page.getByRole("heading", { name: /Paul Morphy/ })).toBeVisible();
-  await page.getByRole("tab", { name: "Bilan" }).click();
-  await expect(page.getByText(/Les 34 positions sont analysées/)).toBeVisible();
+  await expect(page.getByText(/Analyse terminée/)).toBeVisible();
   await expect(
     page.getByTestId("move-list").getByRole("button", { name: "d4" }).first(),
   ).toBeVisible();
@@ -92,20 +98,19 @@ test("navigating while the analysis runs keeps the board and engine in sync", as
   await page.getByLabel("Texte PGN").fill(OPERA);
   await page.getByRole("button", { name: "Importer", exact: true }).click();
   await expect(page).toHaveURL(/\/analysis\?game=/);
-  await page.getByRole("tab", { name: "Bilan" }).click();
-  await page.getByLabel(/Profondeur d.analyse/).selectOption("deep");
-  await page.getByRole("button", { name: "Analyser la partie" }).click();
-  await expect(page.getByText(/Analyse… \d+ positions sur 34/)).toBeVisible();
+  // The analysis starts by itself when the game opens.
+  await expect(page.getByText(/Analyse du coup/)).toBeVisible();
 
   // Jump around while the background analysis runs: the live engine answers for the
   // position on the board, and the analysis keeps going.
   await page.getByTestId("move-list").getByRole("button", { name: "Bxd7+" }).click();
   await page.getByRole("tab", { name: "Moteur" }).click();
-  await expect(page.getByText(/Profondeur \d+/).first()).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("engine-summary")).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole("list", { name: "Variantes principales" })).toContainText("Qb8+");
 
-  // Cancel: the progress is kept as a partial analysis.
-  await page.getByRole("tab", { name: "Bilan" }).click();
+  // Cancel: the progress is kept, and the analysis can be resumed.
+  await page.getByRole("tab", { name: /Bilan/ }).click();
   await page.getByRole("button", { name: "Arrêter" }).click();
-  await expect(page.getByText(/Analyse partielle : \d+ positions sur 34/)).toBeVisible();
+  await expect(page.getByText(/Analyse arrêtée/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reprendre l’analyse" })).toBeVisible();
 });

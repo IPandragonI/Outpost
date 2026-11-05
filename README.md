@@ -4,7 +4,7 @@ A client-side chess analysis workstation: import games, analyze them with Stockf
 in your browser, review classified moves, explore opening theory and train a repertoire.
 No backend, no account, no telemetry — games and analyses stay on the device (IndexedDB),
 and the app works offline once its files are cached. The interface is in French by default,
-with English available (header switch or Settings).
+with English available (sidebar switch or Settings).
 
 ## Features
 
@@ -31,7 +31,7 @@ with English available (header switch or Settings).
   dataset by the tests. The advanced studio keeps position-based identification, theory moves
   with Stockfish's evaluation, opening search and a personal repertoires.
 - **Settings**: board colours (presets or custom), six piece sets, animation speed, move
-  sounds (synthesized in the browser, with volume), engine depth, threads, memory and the
+  sounds (CC0 samples, with volume and an optional sound while navigating), engine depth, threads, memory and the
   sensitivity of move classification (lenient, standard, strict).
 - **Export**: PGN as imported, with explored variations, current line only; analysis JSON.
 

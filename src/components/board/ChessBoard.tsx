@@ -46,6 +46,8 @@ export interface ChessBoardProps {
   badge?: { square: string; classification: Classification } | null;
   /** Called with a legal move; omit to make the board read-only. */
   onMove?: (move: BoardMove) => void;
+  /** Called when the user drops or taps a piece onto a square it cannot go to. */
+  onIllegalMove?: () => void;
   id?: string;
 }
 
@@ -68,6 +70,7 @@ function ChessBoardImpl({
   arrows = [],
   badge,
   onMove,
+  onIllegalMove,
   id = "board",
 }: ChessBoardProps) {
   const boardTheme = useSettings((s) => s.boardTheme);
@@ -98,7 +101,10 @@ function ChessBoardImpl({
   const tryMove = (from: Square, to: Square): boolean => {
     if (!onMove) return false;
     const candidates = chess.moves({ square: from, verbose: true }).filter((m) => m.to === to);
-    if (!candidates.length) return false;
+    if (!candidates.length) {
+      if (from !== to) onIllegalMove?.();
+      return false;
+    }
     if (candidates.some((m) => m.promotion)) {
       setPromotion({ fen, from, to });
       return false;
@@ -111,9 +117,11 @@ function ChessBoardImpl({
   const onSquareClick = ({ square }: { square: string }) => {
     if (!onMove || activePromotion) return;
     const sq = square as Square;
-    if (activeSelection && activeSelection !== sq && tryMove(activeSelection, sq)) return;
     const piece = chess.get(sq);
-    if (piece && piece.color === chess.turn()) {
+    const own = Boolean(piece && piece.color === chess.turn());
+    // Tapping another of your own pieces changes the selection; anything else is a move.
+    if (activeSelection && activeSelection !== sq && !own && tryMove(activeSelection, sq)) return;
+    if (piece && own) {
       setSelected(activeSelection === sq ? null : { fen, square: sq });
     } else {
       setSelected(null);

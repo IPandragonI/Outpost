@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Download, FilePlus2, Pencil, Save, X } from "lucide-react";
+import { Download, FilePlus2, Keyboard, Pencil, Save, X } from "lucide-react";
 import type { Arrow } from "react-chessboard";
 import { ChessBoard, type BoardMove } from "@/components/board/ChessBoard";
 import { useAnalysis, useBoardFen } from "@/features/analysis/store";
@@ -15,26 +15,32 @@ import { describeStorageError } from "@/features/storage/database";
 import { formatScore } from "@/features/engine/evaluation";
 import { parseUci, uciLineToSan } from "@/lib/chess/position";
 import { downloadText, slugify } from "@/lib/download";
+import type { CapturedPieces as CapturedPiecesData } from "@/features/analysis/captured-pieces";
+import { useCapturedPieces } from "@/hooks/useCapturedPieces";
 import { useGameReview } from "@/hooks/useGameReview";
 import { useLiveAnalysis } from "@/hooks/useLiveAnalysis";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useMoveSound } from "@/hooks/useMoveSound";
 import { useOpeningBook } from "@/hooks/useOpeningBook";
-import { OpeningExplorer } from "@/components/openings/OpeningExplorer";
+import { CapturedPieces } from "./CapturedPieces";
 import { EnginePanel } from "./EnginePanel";
 import { EvalBar } from "./EvalBar";
 import { EvalGraph } from "./EvalGraph";
-import { GameReport } from "./GameReport";
-import { MoveInsight } from "./MoveInsight";
+import { ExplorerSection, GameReport } from "./GameReport";
 import { MoveList } from "./MoveList";
 import { NavControls } from "./NavControls";
+import type { MessageKey } from "@/lib/i18n/messages";
 import { useLocale, useT } from "@/lib/i18n/useT";
 
-type Tab = "moves" | "engine" | "openings" | "report";
+type Tab = "review" | "engine";
 
 function isTyping(target: EventTarget | null) {
   const el = target as HTMLElement | null;
-  return Boolean(el?.closest("input, textarea, select, [contenteditable=true]"));
+  return Boolean(
+    el?.closest(
+      "input, textarea, select, [contenteditable=true], [contenteditable=''], dialog[open]",
+    ),
+  );
 }
 
 /** Arrow keys, Home/End, F to flip, Escape to leave a preview. */
@@ -120,7 +126,7 @@ function PreviewBanner() {
   );
 }
 
-function PlayerBar({ color }: { color: "w" | "b" }) {
+function PlayerBar({ color, captured }: { color: "w" | "b"; captured: CapturedPiecesData }) {
   const headers = useAnalysis((s) => s.headers);
   const t = useT();
   const tree = useAnalysis((s) => s.tree);
@@ -148,6 +154,11 @@ function PlayerBar({ color }: { color: "w" | "b" }) {
         {known ? name : color === "w" ? t("side.white") : t("side.black")}
       </span>
       {elo && elo !== "?" && <span className="tabular text-xs text-base-content/55">{elo}</span>}
+      <CapturedPieces
+        pieces={color === "w" ? captured.byWhite : captured.byBlack}
+        pieceColor={color === "w" ? "b" : "w"}
+        advantage={Math.max(0, color === "w" ? captured.balance : -captured.balance)}
+      />
       {clock !== undefined && (
         <span className="tabular ml-auto rounded bg-base-300 px-1.5 font-mono text-xs">
           {Math.floor(clock / 3600) > 0 ? `${Math.floor(clock / 3600)}:` : ""}
@@ -158,6 +169,54 @@ function PlayerBar({ color }: { color: "w" | "b" }) {
           :{String(Math.floor(clock % 60)).padStart(2, "0")}
         </span>
       )}
+    </div>
+  );
+}
+
+const SHORTCUTS: { keys: string[]; label: MessageKey }[] = [
+  { keys: ["←"], label: "shortcuts.prev" },
+  { keys: ["→"], label: "shortcuts.next" },
+  { keys: ["Home", "↑"], label: "shortcuts.first" },
+  { keys: ["End", "↓"], label: "shortcuts.last" },
+  { keys: ["F"], label: "shortcuts.flip" },
+  { keys: ["Esc"], label: "shortcuts.close" },
+];
+
+/** A small popover listing the keyboard shortcuts of the analysis board. */
+function ShortcutsHelp() {
+  const t = useT();
+  return (
+    <div className="dropdown dropdown-end hidden sm:block">
+      <button
+        type="button"
+        tabIndex={0}
+        className="btn btn-square btn-ghost btn-sm"
+        aria-haspopup="true"
+        aria-label={t("shortcuts.title")}
+        title={t("shortcuts.title")}
+      >
+        <Keyboard className="size-4" aria-hidden="true" />
+      </button>
+      <div
+        tabIndex={0}
+        className="dropdown-content z-20 w-60 rounded-box border border-base-content/10 bg-base-100 p-3 text-sm shadow-sm"
+      >
+        <h2 className="panel-title mb-2">{t("shortcuts.title")}</h2>
+        <dl className="flex flex-col gap-1.5">
+          {SHORTCUTS.map(({ keys, label }) => (
+            <div key={label} className="flex items-center justify-between gap-3">
+              <dt className="text-base-content/75">{t(label)}</dt>
+              <dd className="flex gap-1">
+                {keys.map((k) => (
+                  <kbd key={k} className="kbd kbd-sm">
+                    {k}
+                  </kbd>
+                ))}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
     </div>
   );
 }
@@ -316,6 +375,13 @@ function Toolbar() {
         <FilePlus2 className="size-4" aria-hidden="true" />
         <span className="sr-only sm:not-sr-only">{t("toolbar.import")}</span>
       </Link>
+      <ShortcutsHelp />
+      {review.opening && (
+        <p className="w-full truncate text-xs text-base-content/65" data-testid="game-opening">
+          <span className="font-mono text-base-content/55">{review.opening.eco}</span>{" "}
+          {review.opening.name}
+        </p>
+      )}
       {(message || saveError) && (
         <p role="status" className="w-full text-xs text-base-content/65">
           {saveError ? t(saveError.key, saveError.vars) : message}
@@ -363,23 +429,63 @@ function Tabs({
   );
 }
 
-/** Plays the move sound when the position advances by one move (played or stepped to). */
-function useNavigationSound() {
+/**
+ * Plays the move sound for a move the user makes on the board. Stepping through an
+ * existing game is silent unless "sounds when navigating" is on in the settings; either
+ * way only forward steps (to a child of the previous position) make a sound.
+ */
+function useNavigationSound(userMoveRef: { current: boolean }) {
   const tree = useAnalysis((s) => s.tree);
   const currentId = useAnalysis((s) => s.currentId);
+  const onNavigate = useSettings((s) => s.soundOnNavigate);
   const play = useMoveSound();
   const previous = useRef(currentId);
   useEffect(() => {
     const node = tree.nodes[currentId];
-    if (node?.san && node.parentId === previous.current) play({ san: node.san });
+    const byUser = userMoveRef.current;
+    userMoveRef.current = false;
+    if (node?.san && node.parentId === previous.current && (byUser || onNavigate)) {
+      play({ san: node.san, fen: node.fen });
+    }
     previous.current = currentId;
-  }, [currentId, tree, play]);
+  }, [currentId, tree, play, onNavigate, userMoveRef]);
+}
+
+/**
+ * Starts the whole-game analysis when a game is opened, unless it was already analyzed
+ * (the stored results are loaded before this screen shows) or the user stopped it. A
+ * partial analysis from an earlier visit resumes with the preset it was started with.
+ * Boards typed in by hand are analyzed on request only: they change with every move.
+ */
+function useAutoAnalysis() {
+  const gameId = useAnalysis((s) => s.gameId);
+  const runState = useAnalysis((s) => s.run.state);
+  const loading = useAnalysis((s) => s.loading);
+  const presetId = useSettings((s) => s.presetId);
+  const hydrated = useSettings((s) => s.hydrated);
+  const started = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (loading || !hydrated) return;
+    const s = useAnalysis.getState();
+    if (!s.gameId && !s.pgn) return;
+    if (mainline(s.tree).length < 2) return;
+    const key = s.gameId ?? s.pgn;
+    if (started.current === key) return;
+    started.current = key;
+    if (s.run.state === "running" || s.run.state === "done") return;
+    if (s.run.state === "cancelled" && s.run.userStopped) return;
+    void s.startGameAnalysis(s.run.presetId ?? presetId);
+  }, [gameId, runState, loading, hydrated, presetId]);
 }
 
 export function AnalysisWorkspace() {
   const t = useT();
   useKeyboardShortcuts();
-  useNavigationSound();
+  useAutoAnalysis();
+  const userMoveRef = useRef(false);
+  useNavigationSound(userMoveRef);
+  const playSound = useMoveSound();
   const fen = useBoardFen();
   const tree = useAnalysis((s) => s.tree);
   const currentId = useAnalysis((s) => s.currentId);
@@ -388,36 +494,14 @@ export function AnalysisWorkspace() {
   const playMove = useAnalysis((s) => s.playMove);
   const bestArrow = useSettings((s) => s.bestMoveArrow);
   const boardBadges = useSettings((s) => s.boardBadges);
-  const wide = useMediaQuery("(min-width: 1280px)");
   const desktop = useMediaQuery("(min-width: 1024px)");
   const reviewState = useGameReview();
   const live = useLiveAnalysis(fen);
+  const captured = useCapturedPieces();
   useOpeningBook();
 
-  const [tab, setTab] = useState<Tab>("moves");
-  const activeTab: Tab = wide && tab === "moves" ? "engine" : tab;
-
-  // The review flow: the report is shown while the game is analyzed, then the moves take
-  // over, from the first move out of the opening book, to be stepped through one by one.
-  const reviewRef = useRef(reviewState);
-  useEffect(() => {
-    reviewRef.current = reviewState;
-  });
-  useEffect(
-    () =>
-      useAnalysis.subscribe((s, prev) => {
-        if (s.run.state === prev.run.state) return;
-        if (s.run.state === "running") {
-          setTab("report");
-        } else if (prev.run.state === "running" && s.run.state === "done") {
-          const { nodeIds, lastBookIndex } = reviewRef.current;
-          const first = nodeIds[Math.max(1, lastBookIndex + 1)] ?? nodeIds[1];
-          if (first) s.goTo(first);
-          setTab("moves");
-        }
-      }),
-    [],
-  );
+  // Game Review is what opens first; the engine tab sits right of it.
+  const [tab, setTab] = useState<Tab>("review");
 
   const node = getNode(tree, currentId);
   const lastMove = useMemo(() => {
@@ -453,64 +537,33 @@ export function AnalysisWorkspace() {
 
   const onMove = useCallback(
     (move: BoardMove) => {
-      playMove(move);
+      userMoveRef.current = true;
+      if (!playMove(move)) userMoveRef.current = false;
     },
     [playMove],
   );
+  const onIllegalMove = useCallback(() => playSound("illegal"), [playSound]);
 
   const score = live.analysis?.score ?? null;
   const topColor = orientation === "white" ? "b" : "w";
   const bottomColor = orientation === "white" ? "w" : "b";
 
   const tabs: { id: Tab; label: string }[] = [
-    ...(wide ? [] : [{ id: "moves" as Tab, label: t("tabs.moves") }]),
+    { id: "review", label: t("tabs.review") },
     { id: "engine", label: t("tabs.engine") },
-    { id: "openings", label: t("tabs.openings") },
-    { id: "report", label: t("tabs.report") },
   ];
-
-  const panels: Record<Tab, ReactNode> = {
-    moves: (
-      <div className="flex min-h-0 flex-1 flex-col gap-2">
-        {/* The current move's assessment comes first, in a box that keeps its height. */}
-        <div className="h-36 shrink-0 overflow-y-auto px-1 lg:h-40" data-testid="move-box">
-          <MoveInsight byNode={reviewState.byNode} />
-        </div>
-        {/* Phones: the advantage chart sits between the assessment and the moves. */}
-        {!desktop && (
-          <div className="shrink-0 border-y border-base-content/10 py-1">
-            <h2 className="panel-title px-1">{t("graph.title")}</h2>
-            <EvalGraph byNode={reviewState.byNode} height={72} />
-          </div>
-        )}
-        <div className="flex max-h-[50vh] min-h-40 flex-col overflow-hidden rounded-field border border-base-content/8 lg:max-h-none lg:flex-1">
-          <MoveList byNode={reviewState.byNode} />
-        </div>
-      </div>
-    ),
-    engine: <EnginePanel live={live} fen={fen} />,
-    openings: (
-      <OpeningExplorer
-        fen={fen}
-        analysis={live.analysis}
-        onPreview={(uci, label) => useAnalysis.getState().previewFromBoard(uci, label)}
-        onPlay={(uci) => useAnalysis.getState().playFromBoard([uci])}
-      />
-    ),
-    report: <GameReport state={reviewState} />,
-  };
 
   const pvSan = live.analysis?.lines[0]
     ? uciLineToSan(fen, live.analysis.lines[0].pv.slice(0, 1))[0]
     : null;
 
   return (
-    <div className="mx-auto grid w-full max-w-[1600px] gap-3 px-2 pt-2 pb-24 sm:px-4 sm:pt-3 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)] lg:pb-4 xl:grid-cols-[minmax(0,1fr)_300px_minmax(360px,420px)]">
+    <div className="mx-auto grid w-full max-w-[1900px] gap-3 px-2 pt-2 pb-24 sm:px-3 lg:grid-cols-[minmax(0,1fr)_minmax(380px,460px)] lg:items-start lg:pb-3">
       {/* Board column */}
       <section className="flex min-w-0 flex-col gap-2" aria-label="Board">
         <Toolbar />
-        <div className="mx-auto flex w-full flex-col gap-1 lg:max-w-[min(100%,calc(100dvh-10rem))]">
-          <PlayerBar color={topColor} />
+        <div className="mx-auto flex w-full flex-col gap-1 lg:max-w-[min(100%,calc(100dvh-10.5rem))]">
+          <PlayerBar color={topColor} captured={captured} />
           <div className="flex gap-2">
             <div className="hidden sm:flex">
               <EvalBar score={score} orientation={orientation} pending={live.searching} />
@@ -523,10 +576,11 @@ export function AnalysisWorkspace() {
                 arrows={arrows}
                 badge={badge}
                 onMove={onMove}
+                onIllegalMove={onIllegalMove}
               />
             </div>
           </div>
-          <PlayerBar color={bottomColor} />
+          <PlayerBar color={bottomColor} captured={captured} />
           <div className="flex items-center gap-2 sm:hidden">
             <EvalBar score={score} orientation={orientation} direction="horizontal" />
             <span className="tabular min-w-24 text-right font-mono text-xs" aria-hidden="true">
@@ -535,51 +589,46 @@ export function AnalysisWorkspace() {
           </div>
         </div>
         <PreviewBanner />
-        {/* Desktop navigation under the board. */}
-        <div className="hidden lg:block xl:hidden">
-          <NavControls />
-        </div>
       </section>
 
-      {/* Wide screens: moves in their own column. */}
-      {wide && (
-        <aside
-          className="panel flex max-h-[calc(100dvh-5.5rem)] min-h-0 flex-col gap-2 p-2"
-          aria-label={t("tabs.moves")}
-        >
-          {/* The current move's assessment comes first, in a box that keeps its height. */}
-          <div className="h-44 shrink-0 overflow-y-auto border-b border-base-content/10 px-1 pb-2">
-            <MoveInsight byNode={reviewState.byNode} />
-          </div>
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-field">
-            <MoveList byNode={reviewState.byNode} />
-          </div>
-          <NavControls />
-        </aside>
-      )}
-
-      {/* Panels: tabs on every size. */}
+      {/* Analysis panel: graph, the two tabs, then the move list and its controls. */}
       <aside
-        className="panel flex min-h-0 flex-col lg:max-h-[calc(100dvh-5.5rem)]"
+        className="panel flex min-h-0 flex-col lg:sticky lg:top-3 lg:h-[calc(100dvh-1.5rem)]"
         aria-label={t("tabs.analysis")}
       >
-        {/* The advantage chart stays in view whatever the tab (on phones, the moves tab
-            shows it between the move assessment and the moves instead). */}
-        {(desktop || activeTab !== "moves") && (
-          <div className="border-b border-base-content/10 px-2 pt-2 pb-1">
-            <h2 className="panel-title px-1">{t("graph.title")}</h2>
-            <EvalGraph byNode={reviewState.byNode} height={desktop ? 96 : 72} />
-          </div>
-        )}
-        <Tabs tabs={tabs} active={activeTab} onChange={setTab} />
+        <div className="border-b border-base-content/10 px-2 pt-2 pb-1">
+          <h2 className="panel-title px-1">{t("graph.title")}</h2>
+          <EvalGraph byNode={reviewState.byNode} height={desktop ? 84 : 72} />
+        </div>
+        <Tabs tabs={tabs} active={tab} onChange={setTab} />
         <div
           role="tabpanel"
-          id={`panel-${activeTab}`}
-          aria-labelledby={`tab-${activeTab}`}
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto p-3"
+          id={`panel-${tab}`}
+          aria-labelledby={`tab-${tab}`}
+          className="flex flex-col gap-3 p-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
         >
-          {panels[activeTab]}
+          {tab === "review" ? (
+            <>
+              <GameReport state={reviewState} fen={fen} />
+              <ExplorerSection fen={fen} live={live} />
+            </>
+          ) : (
+            <EnginePanel live={live} fen={fen} />
+          )}
         </div>
+
+        {/* The move list sits outside the tabs, so switching tabs never moves its scroll. */}
+        <section
+          className="flex h-72 shrink-0 flex-col border-t border-base-content/10 lg:h-[38%] lg:min-h-52"
+          aria-label={t("tabs.moves")}
+        >
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <MoveList byNode={reviewState.byNode} />
+          </div>
+          <div className="hidden border-t border-base-content/10 p-1 lg:block">
+            <NavControls />
+          </div>
+        </section>
       </aside>
 
       {/* Phones and tablets: navigation within thumb reach. */}

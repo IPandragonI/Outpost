@@ -1,18 +1,23 @@
 "use client";
 
-import { memo, useMemo } from "react";
+import { memo, useMemo, useState } from "react";
 import { Chess } from "chess.js";
-import { Info, Play, Square } from "lucide-react";
+import { Info, Play, RotateCcw, Square } from "lucide-react";
 import { useAnalysis } from "@/features/analysis/store";
 import { ANALYSIS_PRESETS } from "@/features/analysis/game-analysis";
 import { type Classification } from "@/features/classification/classification-rules";
+import { criticalMoments } from "@/features/classification/critical-moments";
 import { biggestErrors, type GameReview } from "@/features/classification/game-review";
 import { formatScore } from "@/features/engine/evaluation";
 import { getNode, mainline } from "@/features/games/variation-tree";
 import { useSettings, type PresetId } from "@/features/settings/settings-store";
-import { parseUci } from "@/lib/chess/position";
+import { parseUci, positionKey, uciLineToSan } from "@/lib/chess/position";
+import { useEngineStatus, type LiveAnalysis } from "@/hooks/useLiveAnalysis";
 import type { GameReviewState } from "@/hooks/useGameReview";
+import { useOpeningBook } from "@/hooks/useOpeningBook";
+import { OpeningExplorer } from "@/components/openings/OpeningExplorer";
 import { ClassificationBadge } from "./ClassificationBadge";
+import { MoveInsight } from "./MoveInsight";
 import { useT } from "@/lib/i18n/useT";
 
 const SHOWN: Classification[] = [
@@ -34,17 +39,54 @@ function moveLabel(ply: number, san: string) {
   return `${n}${ply % 2 === 1 ? "." : "…"} ${san}`;
 }
 
-/** Start / cancel whole-game analysis, with honest progress. */
+/**
+ * Start / stop / resume whole-game analysis, with honest progress: the bar counts finished
+ * positions (each is one search task) rather than guessing at elapsed time, since book
+ * positions are searched shallowly and finish faster than the rest.
+ */
 export function AnalysisRunner() {
   const run = useAnalysis((s) => s.run);
   const tree = useAnalysis((s) => s.tree);
+  const gamePositions = useAnalysis((s) => s.gamePositions);
   const plies = useMemo(() => mainline(tree).length - 1, [tree]);
   const { startGameAnalysis, cancelGameAnalysis } = useAnalysis.getState();
   const presetId = useSettings((s) => s.presetId);
   const setSettings = useSettings((s) => s.set);
+  const engine = useEngineStatus();
   const running = run.state === "running";
-  const percent = run.total ? Math.round((run.done / run.total) * 100) : 0;
   const t = useT();
+
+  // The earliest move still waiting for its analysis (searches may finish out of order).
+  const pendingMove = useMemo(() => {
+    if (!running) return null;
+    const line = mainline(tree);
+    const node = line.slice(1).find((n, i) => !gamePositions[positionKey(line[i + 1]!.fen)]);
+    return node?.san ? moveLabel(node.ply, node.san) : null;
+  }, [running, tree, gamePositions]);
+
+  const sameAsRun = run.presetId === presetId;
+  const status =
+    run.state === "running"
+      ? pendingMove
+        ? t("review.status.running", { move: pendingMove })
+        : t("review.status.finishing")
+      : run.state === "done"
+        ? t("review.status.done", {
+            preset: run.presetId ? t(`preset.${run.presetId as PresetId}`) : "",
+          })
+        : run.state === "error"
+          ? t("review.status.error", { error: run.error ?? "" })
+          : run.state === "cancelled"
+            ? t(run.userStopped ? "review.status.stopped" : "review.status.incomplete")
+            : t("review.status.idle");
+  const engineText =
+    engine.state === "loading"
+      ? t("engine.loading")
+      : engine.state === "error"
+        ? t("engine.unavailable")
+        : running
+          ? t("review.engine.busy")
+          : t("review.engine.ready");
 
   return (
     <div className="flex flex-col gap-2" data-testid="analysis-runner">
@@ -66,7 +108,7 @@ export function AnalysisRunner() {
           ))}
         </select>
         {running ? (
-          <button type="button" className="btn btn-sm" onClick={cancelGameAnalysis}>
+          <button type="button" className="btn btn-sm" onClick={() => cancelGameAnalysis(true)}>
             <Square className="size-3.5" aria-hidden="true" />
             {t("report.stop")}
           </button>
@@ -77,42 +119,41 @@ export function AnalysisRunner() {
             onClick={() => startGameAnalysis(presetId)}
             disabled={plies < 1}
           >
-            <Play className="size-3.5" aria-hidden="true" />
-            {run.state === "done" && run.presetId === presetId
+            {run.state === "done" && sameAsRun ? (
+              <RotateCcw className="size-3.5" aria-hidden="true" />
+            ) : (
+              <Play className="size-3.5" aria-hidden="true" />
+            )}
+            {run.state === "done" && sameAsRun
               ? t("report.again")
-              : run.done > 0 && run.presetId === presetId
+              : run.done > 0 && run.done < run.total && sameAsRun
                 ? t("report.resume")
                 : t("report.analyze")}
           </button>
         )}
+        <span className="ml-auto text-xs text-base-content/55" aria-live="polite">
+          {engineText}
+        </span>
       </div>
-      {(running || run.state === "cancelled" || run.state === "error" || run.state === "done") &&
-        run.total > 0 && (
-          <div className="flex flex-col gap-1">
-            <progress
-              className={`progress h-1.5 ${run.state === "error" ? "progress-error" : "progress-primary"}`}
-              value={run.done}
-              max={run.total}
-              aria-label={t("report.progress")}
-            />
-            <p className="tabular text-xs text-base-content/60" aria-live="polite">
-              {run.state === "done"
-                ? t("report.done", {
-                    total: run.total,
-                    preset: run.presetId ? t(`preset.${run.presetId as PresetId}`) : "",
-                  })
-                : running
-                  ? t("report.running", { done: run.done, total: run.total, percent })
-                  : run.state === "error"
-                    ? t("report.error", {
-                        done: run.done,
-                        total: run.total,
-                        error: run.error ?? "",
-                      })
-                    : t("report.partial", { done: run.done, total: run.total })}
-            </p>
-          </div>
-        )}
+      <p className="text-xs text-base-content/55">{t(`preset.${presetId}.desc`)}</p>
+      {run.total > 0 && (
+        <div className="flex flex-col gap-1">
+          <progress
+            className={`progress h-1.5 ${run.state === "error" ? "progress-error" : "progress-primary"}`}
+            value={run.done}
+            max={run.total}
+            aria-label={t("report.progress")}
+          />
+          <p
+            className="tabular flex flex-wrap justify-between gap-x-3 text-xs text-base-content/65"
+            aria-live="polite"
+          >
+            <span>{status}</span>
+            <span>{t("review.progress", { done: run.done, total: run.total })}</span>
+          </p>
+        </div>
+      )}
+      {run.total === 0 && <p className="text-xs text-base-content/60">{status}</p>}
     </div>
   );
 }
@@ -142,13 +183,90 @@ function PlayerColumn({ review, color }: { review: GameReview; color: "w" | "b" 
   );
 }
 
-function GameReportImpl({ state }: { state: GameReviewState }) {
+/** The opening of the position on the board (or of the game), and how theory goes on. */
+function OpeningSummary({
+  fen,
+  gameOpening,
+}: {
+  fen: string;
+  gameOpening: GameReviewState["opening"];
+}) {
+  const { book } = useOpeningBook();
+  const t = useT();
+  const { previewFromBoard } = useAnalysis.getState();
+  const here = book?.namesAt(fen)[0] ?? null;
+  const opening = here ?? gameOpening;
+  const theory = useMemo(() => {
+    if (!book?.has(fen)) return null;
+    const uci = book.mainContinuation(fen, 6);
+    if (!uci.length) return null;
+    return { uci, san: uciLineToSan(fen, uci) };
+  }, [book, fen]);
+
+  if (!opening && !theory) return null;
+  return (
+    <section className="flex flex-col gap-1" aria-label={t("review.opening")}>
+      <h3 className="panel-title">{t("review.opening")}</h3>
+      {opening && (
+        <p className="text-sm" data-testid="opening-name">
+          <span className="font-mono text-xs text-base-content/55">{opening.eco}</span>{" "}
+          {opening.name}
+          {!here && gameOpening && (
+            <span className="text-xs text-base-content/50"> · {t("review.gameOpening")}</span>
+          )}
+        </p>
+      )}
+      {theory && (
+        <p className="text-xs text-base-content/65">
+          {t("review.theory")}{" "}
+          <button
+            type="button"
+            className="rounded font-mono text-[13px] text-base-content hover:bg-base-300"
+            onClick={() => previewFromBoard(theory.uci, t("review.theoryLabel"), 1)}
+          >
+            {theory.san.join(" ")}
+          </button>
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** The opening explorer, one click away; it is only mounted once opened. */
+export function ExplorerSection({ fen, live }: { fen: string; live: LiveAnalysis }) {
+  const [open, setOpen] = useState(false);
+  const t = useT();
+  return (
+    <details
+      className="rounded-field border border-base-content/10"
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+    >
+      <summary className="min-h-10 cursor-pointer px-3 py-2 text-sm font-medium select-none">
+        {t("review.explorer")}
+      </summary>
+      {open && (
+        <div className="border-t border-base-content/10 p-3">
+          <OpeningExplorer
+            fen={fen}
+            analysis={live.analysis}
+            onPreview={(uci, label) => useAnalysis.getState().previewFromBoard(uci, label)}
+            onPlay={(uci) => useAnalysis.getState().playFromBoard([uci])}
+          />
+        </div>
+      )}
+    </details>
+  );
+}
+
+function GameReportImpl({ state, fen }: { state: GameReviewState; fen: string }) {
   const { review, nodeIds, opening } = state;
   const goTo = useAnalysis((s) => s.goTo);
+  const currentId = useAnalysis((s) => s.currentId);
   const result = useAnalysis((s) => s.result);
   const headers = useAnalysis((s) => s.headers);
   const t = useT();
   const errors = useMemo(() => (review ? biggestErrors(review, 6) : []), [review]);
+  const moments = useMemo(() => (review ? criticalMoments(review) : []), [review]);
 
   const rootPly = useAnalysis((s) => getNode(s.tree, s.tree.rootId).ply);
   // nodeIds is the main line from the root, one node per ply.
@@ -162,19 +280,22 @@ function GameReportImpl({ state }: { state: GameReviewState }) {
     >
       <AnalysisRunner />
 
-      <div className="flex flex-col gap-0.5 text-sm">
-        {opening && (
-          <p>
-            <span className="font-mono text-xs text-base-content/55">{opening.eco}</span>{" "}
-            {opening.name}
-          </p>
-        )}
-        <p className="text-base-content/60">
-          {[headers.Event, headers.Date, result !== "*" ? result : null]
-            .filter((v) => v && v !== "?")
-            .join(" · ")}
-        </p>
+      <p className="text-sm text-base-content/60">
+        {[headers.Event, headers.Date, result !== "*" ? result : null]
+          .filter((v) => v && v !== "?")
+          .join(" · ")}
+      </p>
+
+      {/* The assessment of the selected move; keeps its height so the page does not jump. */}
+      <div
+        className="min-h-24 border-y border-base-content/10 py-2"
+        data-testid="move-box"
+        aria-label={t("review.selected")}
+      >
+        <MoveInsight byNode={state.byNode} />
       </div>
+
+      <OpeningSummary fen={fen} gameOpening={opening} />
 
       {!review ? (
         <p className="text-sm text-base-content/60">{t("report.empty")}</p>
@@ -222,6 +343,49 @@ function GameReportImpl({ state }: { state: GameReviewState }) {
             </tbody>
           </table>
 
+          {moments.length > 0 && (
+            <div className="flex flex-col gap-1.5" data-testid="critical-moments">
+              <h3 className="panel-title">{t("critical.title")}</h3>
+              <ul className="flex flex-col gap-0.5">
+                {moments.map((m) => {
+                  const id = nodeOfPly(m.ply);
+                  const selected = id !== null && id === currentId;
+                  return (
+                    <li key={m.ply}>
+                      <button
+                        type="button"
+                        aria-current={selected ? "true" : undefined}
+                        className={`flex min-h-10 w-full items-center gap-2 rounded-field px-2 text-left text-sm hover:bg-base-200 ${
+                          selected ? "bg-base-200" : ""
+                        }`}
+                        onClick={() => id && goTo(id)}
+                      >
+                        <ClassificationBadge
+                          classification={m.classification}
+                          className="size-5 shrink-0 text-[9px]"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs text-base-content/60">
+                            {t(`critical.${m.kind}`)} ·{" "}
+                            {m.color === "w" ? t("side.white") : t("side.black")}
+                          </span>
+                          <span className="font-mono">{moveLabel(m.ply, m.san)}</span>
+                        </span>
+                        <span className="tabular shrink-0 font-mono text-xs text-base-content/60">
+                          {m.kind === "swing"
+                            ? `${m.swing > 0 ? "↑" : "↓"}${Math.round(Math.abs(m.swing) * 100)}%`
+                            : m.loss > 0.005
+                              ? `−${Math.round(m.loss * 100)}%`
+                              : ""}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
           {errors.length > 0 && (
             <div className="flex flex-col gap-1.5">
               <h3 className="panel-title">{t("report.biggestErrors")}</h3>
@@ -241,7 +405,7 @@ function GameReportImpl({ state }: { state: GameReviewState }) {
                     <li key={m.ply}>
                       <button
                         type="button"
-                        className="flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-sm hover:bg-base-200"
+                        className="flex min-h-10 w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-sm hover:bg-base-200"
                         onClick={() => id && goTo(id)}
                       >
                         <ClassificationBadge
@@ -257,35 +421,6 @@ function GameReportImpl({ state }: { state: GameReviewState }) {
                             {t("report.bestShort", { san: best })}
                           </span>
                         )}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-
-          {review.turningPoints.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <h3 className="panel-title">{t("report.turningPoints")}</h3>
-              <ul className="flex flex-wrap gap-1.5">
-                {review.turningPoints.slice(0, 8).map((tp) => {
-                  const move = review.moves.find((m) => m.ply === tp.ply);
-                  const id = nodeOfPly(tp.ply);
-                  if (!move) return null;
-                  return (
-                    <li key={tp.ply}>
-                      <button
-                        type="button"
-                        className="btn btn-soft font-mono btn-xs"
-                        onClick={() => id && goTo(id)}
-                        title={t("report.turningHint", {
-                          from: Math.round(tp.from * 100),
-                          to: Math.round(tp.to * 100),
-                        })}
-                      >
-                        {moveLabel(tp.ply, move.san)} {tp.to > tp.from ? "↑" : "↓"}
-                        {Math.round(Math.abs(tp.to - tp.from) * 100)}%
                       </button>
                     </li>
                   );

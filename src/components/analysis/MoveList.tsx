@@ -28,9 +28,20 @@ interface MoveButtonProps {
   classification?: MoveClassification;
   onSelect(id: NodeId): void;
   inline?: boolean;
+  /** A game move whose analysis is still to come. */
+  pending?: boolean;
 }
 
-function MoveButton({ node, current, classification, onSelect, inline }: MoveButtonProps) {
+/** Memoized: stepping through a long game re-renders only the two moves that changed. */
+const MoveButton = memo(function MoveButton({
+  node,
+  current,
+  classification,
+  onSelect,
+  inline,
+  pending,
+}: MoveButtonProps) {
+  const t = useT();
   const nags = (node.nags ?? [])
     .map((n) => NAG_SYMBOLS[n])
     .filter(Boolean)
@@ -65,9 +76,17 @@ function MoveButton({ node, current, classification, onSelect, inline }: MoveBut
       {showBadge && !inline && (
         <ClassificationBadge classification={cls} className="ml-auto size-4 text-[8px]" />
       )}
+      {pending && !cls && !inline && (
+        <span
+          className="ml-auto size-1.5 animate-pulse rounded-full bg-base-content/25"
+          title={t("moves.pending")}
+          role="img"
+          aria-label={t("moves.pending")}
+        />
+      )}
     </button>
   );
-}
+});
 
 /** A variation as flowing text, with its own nested variations in parentheses. */
 function VariationLine({
@@ -176,16 +195,36 @@ function MoveListImpl({ byNode }: { byNode: Record<NodeId, MoveClassification> }
   const container = useRef<HTMLDivElement>(null);
   const t = useT();
 
-  // Keep the current move visible, scrolling only this list (never the page).
+  const runState = useAnalysis((s) => s.run.state);
+  const analysing = runState === "running" || runState === "cancelled" || runState === "error";
+
+  // Keep the selected move in view, scrolling only this list, never the page. When it
+  // leaves the middle half of the list it is brought back to the centre. The first
+  // scroll, reduced-motion users and fast repeats (a held arrow key) jump instead of
+  // animating, so animations never queue up.
+  const lastScroll = useRef(0);
+  const firstScroll = useRef(true);
   useEffect(() => {
     const box = container.current;
     const el = box?.querySelector<HTMLElement>(`[data-node="${currentId}"]`);
     if (!box || !el) return;
-    const top = el.offsetTop - box.offsetTop;
-    if (top < box.scrollTop + 8) box.scrollTop = Math.max(0, top - 40);
-    else if (top + el.offsetHeight > box.scrollTop + box.clientHeight - 8) {
-      box.scrollTop = top - box.clientHeight + el.offsetHeight + 40;
-    }
+    const boxRect = box.getBoundingClientRect();
+    const rect = el.getBoundingClientRect();
+    const offset = rect.top - boxRect.top;
+    const margin = box.clientHeight * 0.25;
+    const inBand = offset >= margin && offset + rect.height <= box.clientHeight - margin;
+    const first = firstScroll.current;
+    firstScroll.current = false;
+    // A list that fits entirely has nothing to scroll; elsewhere, only act outside the band.
+    if (box.scrollHeight <= box.clientHeight || (inBand && !first)) return;
+    const now = performance.now();
+    const rapid = now - lastScroll.current < 160;
+    lastScroll.current = now;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    box.scrollTo({
+      top: Math.max(0, box.scrollTop + offset - (box.clientHeight - rect.height) / 2),
+      behavior: first || rapid || reduced ? "auto" : "smooth",
+    });
   }, [currentId]);
 
   const line = mainline(tree);
@@ -212,6 +251,7 @@ function MoveListImpl({ byNode }: { byNode: Record<NodeId, MoveClassification> }
             current={white.id === currentId}
             classification={byNode[white.id]}
             onSelect={goTo}
+            pending={analysing}
           />
         ) : (
           <span className="px-1.5 font-mono text-base-content/35">…</span>
@@ -222,6 +262,7 @@ function MoveListImpl({ byNode }: { byNode: Record<NodeId, MoveClassification> }
             current={black.id === currentId}
             classification={byNode[black.id]}
             onSelect={goTo}
+            pending={analysing}
           />
         ) : (
           <span />
@@ -301,6 +342,22 @@ function MoveListImpl({ byNode }: { byNode: Record<NodeId, MoveClassification> }
               />
             </div>
           ))}
+        </div>
+      )}
+      {line.length > 1 && (
+        <div
+          className="sticky top-0 z-10 grid grid-cols-[2.5rem_1fr_1fr] gap-x-0.5 border-b border-base-content/8 bg-base-100 py-1 text-[11px] font-medium text-base-content/55"
+          aria-hidden="true"
+        >
+          <span />
+          <span className="flex items-center gap-1.5 px-1.5">
+            <span className="inline-block size-2.5 rounded-sm bg-eval-white ring-1 ring-base-content/30" />
+            {t("side.white")}
+          </span>
+          <span className="flex items-center gap-1.5 px-1.5">
+            <span className="inline-block size-2.5 rounded-sm bg-eval-black ring-1 ring-base-content/30" />
+            {t("side.black")}
+          </span>
         </div>
       )}
       {rows}

@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { SerwistProvider } from "@serwist/turbopack/react";
-import { AppHeader } from "@/components/layout/AppHeader";
+import { AppShell } from "@/components/layout/AppShell";
 import { EngineConfigSync } from "@/components/layout/EngineConfigSync";
 import { ThemeSync } from "@/components/layout/ThemeSync";
 import { UpdatePrompt } from "@/components/layout/UpdatePrompt";
@@ -78,12 +78,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           reloadOnOnline={false}
         >
           <SkipLink />
-          <div className="flex min-h-dvh flex-col">
-            <AppHeader />
-            <main id="main" className="flex flex-1 flex-col">
-              {children}
-            </main>
-          </div>
+          <AppShell>{children}</AppShell>
           <UpdatePrompt />
         </SerwistProvider>
       </body>

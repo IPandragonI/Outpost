@@ -1,40 +1,124 @@
 "use client";
 
 /**
- * Move sounds, synthesized with the Web Audio API: no audio files to download or license,
- * and they work offline. Short percussive tones, quiet by design.
+ * Move sounds: short WAV samples from /sounds (see public/sounds/README.md), decoded once
+ * into Web Audio buffers so playback starts without latency.
+ *
+ * - Nothing plays before the first user gesture (browsers refuse, and creating the audio
+ *   context earlier only produces warnings).
+ * - One voice at a time: a new sound cuts the previous one, so quick navigation never piles
+ *   sounds up.
  */
 
-export type MoveSound = "move" | "capture" | "castle" | "check" | "mate" | "error";
+import { gameEndOf } from "@/lib/chess/position";
+
+export type MoveSound = "move" | "capture" | "castle" | "check" | "promote" | "illegal" | "end";
+
+const FILES: Record<MoveSound, string> = {
+  move: "move",
+  capture: "capture",
+  castle: "castle",
+  check: "check",
+  promote: "promote",
+  illegal: "illegal",
+  end: "game-end",
+};
 
 let context: AudioContext | null = null;
+let master: GainNode | null = null;
+let unlocked = false;
+let voice: { source: AudioBufferSourceNode; gain: GainNode } | null = null;
+const buffers = new Map<MoveSound, AudioBuffer>();
+const loading = new Map<MoveSound, Promise<AudioBuffer | null>>();
 
 function audio(): AudioContext | null {
-  if (typeof window === "undefined" || !("AudioContext" in window)) return null;
-  context ??= new AudioContext();
-  // Browsers start audio suspended until a user gesture; moves come from gestures.
-  if (context.state === "suspended") void context.resume();
+  if (typeof window === "undefined") return null;
+  if (!context) {
+    const Ctor =
+      window.AudioContext ??
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return null;
+    context = new Ctor();
+    master = context.createGain();
+    master.connect(context.destination);
+  }
+  if (context.state === "suspended") void context.resume().catch(() => {});
   return context;
 }
 
-/** One short "knock": a pitched tone that drops quickly, like wood on wood. */
-function knock(ctx: AudioContext, at: number, freq: number, volume: number, length = 0.09) {
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.type = "triangle";
-  osc.frequency.setValueAtTime(freq, at);
-  osc.frequency.exponentialRampToValueAtTime(freq * 0.55, at + length);
-  gain.gain.setValueAtTime(0.0001, at);
-  gain.gain.exponentialRampToValueAtTime(volume, at + 0.005);
-  gain.gain.exponentialRampToValueAtTime(0.0001, at + length);
-  osc.connect(gain).connect(ctx.destination);
-  osc.start(at);
-  osc.stop(at + length + 0.02);
+function load(sound: MoveSound): Promise<AudioBuffer | null> {
+  const known = buffers.get(sound);
+  if (known) return Promise.resolve(known);
+  let pending = loading.get(sound);
+  if (!pending) {
+    const ctx = audio();
+    pending = ctx
+      ? fetch(`/sounds/${FILES[sound]}.wav`)
+          .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
+          .then((data) => ctx.decodeAudioData(data))
+          .then((buffer) => {
+            buffers.set(sound, buffer);
+            return buffer;
+          })
+          .catch(() => {
+            loading.delete(sound);
+            return null;
+          })
+      : Promise.resolve(null);
+    loading.set(sound, pending);
+  }
+  return pending;
 }
 
-/** The sound for a move, from its SAN. */
-export function soundForSan(san: string): MoveSound {
-  if (san.includes("#")) return "mate";
+/** Decodes every sound in the background so the first move already plays instantly. */
+function preload() {
+  for (const sound of Object.keys(FILES) as MoveSound[]) void load(sound);
+}
+
+const GESTURES = ["pointerdown", "keydown", "touchend"] as const;
+
+/**
+ * Browsers only allow audio after a user gesture: the first pointer or key press unlocks
+ * playback and warms up the samples.
+ */
+function unlock() {
+  if (unlocked) return;
+  unlocked = true;
+  audio();
+  preload();
+  for (const type of GESTURES) window.removeEventListener(type, unlock, true);
+}
+if (typeof window !== "undefined") {
+  for (const type of GESTURES) {
+    window.addEventListener(type, unlock, { capture: true, passive: true });
+  }
+}
+
+/** Whether a gesture has been seen, so sounds may play. */
+export function soundsUnlocked(): boolean {
+  return unlocked;
+}
+
+/** Stops the sound being played, with a few milliseconds of fade to avoid a click. */
+function cutVoice(ctx: AudioContext) {
+  if (!voice) return;
+  const { source, gain } = voice;
+  voice = null;
+  try {
+    gain.gain.cancelScheduledValues(ctx.currentTime);
+    gain.gain.setValueAtTime(gain.gain.value, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.008);
+    source.stop(ctx.currentTime + 0.01);
+  } catch {
+    // Already stopped.
+  }
+}
+
+/** The sound for a move, from its SAN (and the position after it, to catch a draw). */
+export function soundForSan(san: string, fenAfter?: string): MoveSound {
+  if (san.includes("#")) return "end";
+  if (fenAfter && gameEndOf(fenAfter)) return "end";
+  if (san.includes("=")) return "promote";
   if (san.includes("+")) return "check";
   if (san.startsWith("O-O")) return "castle";
   if (san.includes("x")) return "capture";
@@ -42,33 +126,31 @@ export function soundForSan(san: string): MoveSound {
 }
 
 export function playSound(sound: MoveSound, volume: number) {
+  if (!unlocked || volume <= 0) return;
   const ctx = audio();
-  if (!ctx || volume <= 0) return;
-  const v = Math.min(1, volume) * 0.35;
-  const t = ctx.currentTime + 0.005;
-  switch (sound) {
-    case "move":
-      knock(ctx, t, 520, v);
-      break;
-    case "capture":
-      knock(ctx, t, 300, v * 1.2, 0.12);
-      knock(ctx, t + 0.03, 620, v * 0.6);
-      break;
-    case "castle":
-      knock(ctx, t, 520, v);
-      knock(ctx, t + 0.09, 470, v);
-      break;
-    case "check":
-      knock(ctx, t, 660, v);
-      knock(ctx, t + 0.08, 880, v * 0.9);
-      break;
-    case "mate":
-      knock(ctx, t, 523, v, 0.25);
-      knock(ctx, t + 0.12, 659, v, 0.25);
-      knock(ctx, t + 0.24, 784, v, 0.35);
-      break;
-    case "error":
-      knock(ctx, t, 220, v, 0.18);
-      break;
+  if (!ctx || !master) return;
+  const out = master;
+  const start = (decoded: AudioBuffer) => {
+    cutVoice(ctx);
+    const source = ctx.createBufferSource();
+    const gain = ctx.createGain();
+    source.buffer = decoded;
+    gain.gain.value = Math.min(1, Math.max(0, volume));
+    source.connect(gain).connect(out);
+    source.onended = () => {
+      if (voice?.source === source) voice = null;
+    };
+    voice = { source, gain };
+    source.start();
+  };
+  const buffer = buffers.get(sound);
+  if (buffer) {
+    start(buffer);
+    return;
   }
+  // Not decoded yet (very first sound): play it as soon as it is, unless it has become stale.
+  const requestedAt = performance.now();
+  void load(sound).then((decoded) => {
+    if (decoded && performance.now() - requestedAt < 600) start(decoded);
+  });
 }

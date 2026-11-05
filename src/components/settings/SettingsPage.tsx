@@ -419,6 +419,13 @@ export function SettingsPage() {
             onChange={(v) => set({ sound: v })}
           />
         </Row>
+        <Row label={t("settings.soundNav")} hint={t("settings.soundNavHint")}>
+          <Toggle
+            label={t("settings.soundNav")}
+            checked={settings.soundOnNavigate}
+            onChange={(v) => set({ soundOnNavigate: v })}
+          />
+        </Row>
         <Row label={t("settings.badges")} hint={t("settings.badgesHint")}>
           <Toggle
             label={t("settings.badges")}

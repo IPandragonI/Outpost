@@ -37,6 +37,8 @@ export interface Settings {
   sound: boolean;
   /** 0 to 1. */
   soundVolume: number;
+  /** Also play the move sound when stepping through an existing game (off by default). */
+  soundOnNavigate: boolean;
   sensitivity: Sensitivity;
   /** Analyze the position on the board continuously. */
   liveEngine: boolean;
@@ -67,6 +69,7 @@ export const DEFAULT_SETTINGS: Settings = {
   animationSpeed: "normal",
   sound: true,
   soundVolume: 0.6,
+  soundOnNavigate: false,
   sensitivity: "standard",
   liveEngine: true,
   liveMultiPv: 3,

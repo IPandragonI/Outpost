@@ -30,17 +30,24 @@ test("phone: import a game, navigate with large controls, switch panels without 
 
   // Switching panels keeps the position.
   await page.getByRole("tab", { name: "Moteur" }).tap();
-  await page.getByRole("tab", { name: "Ouvertures" }).tap();
-  await expect(page.getByTestId("opening-explorer")).toBeVisible();
-  await page.getByRole("tab", { name: "Coups" }).tap();
+  await expect(page.getByTestId("engine-summary").or(page.getByText("Recherche…"))).toBeVisible();
+  await page.getByRole("tab", { name: /Bilan/ }).tap();
   await expect(moves.locator('[aria-current="step"]')).toHaveText("Qh4+");
 
-  // The advantage chart sits below the move assessment and above the moves.
-  const insightBox = (await page.getByTestId("move-box").boundingBox())!;
+  // The advantage chart sits above the tabs, and the move list below the review.
   const graphBox = (await page.getByTestId("eval-graph").boundingBox())!;
+  const insightBox = (await page.getByTestId("move-box").boundingBox())!;
   const listBox = (await moves.boundingBox())!;
-  expect(graphBox.y).toBeGreaterThanOrEqual(insightBox.y + insightBox.height);
-  expect(graphBox.y + graphBox.height).toBeLessThanOrEqual(listBox.y);
+  expect(graphBox.y + graphBox.height).toBeLessThanOrEqual(insightBox.y);
+  expect(insightBox.y + insightBox.height).toBeLessThanOrEqual(listBox.y);
+
+  // The navigation drawer opens from the menu button and closes after a choice.
+  await page.getByRole("button", { name: "Ouvrir le menu de navigation" }).tap();
+  const drawer = page.getByTestId("mobile-drawer");
+  await expect(drawer).toBeVisible();
+  await drawer.getByRole("link", { name: "Parties", exact: true }).tap();
+  await expect(page).toHaveURL(/\/games/);
+  await expect(drawer).toBeHidden();
 
   // No horizontal scrolling.
   const overflow = await page.evaluate(

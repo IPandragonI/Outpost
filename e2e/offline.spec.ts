@@ -15,16 +15,19 @@ test("works offline once the app and engine have been loaded", async ({ page, co
 
   // Use the engine once so its files are cached.
   await page.goto(`/analysis?fen=${encodeURIComponent(POSITION)}`);
+  await page.getByRole("tab", { name: "Moteur" }).click();
   await expect(page.getByText(/Profondeur \d+/).first()).toBeVisible({ timeout: 60_000 });
 
   // Offline: the app, the engine and the opening book keep working.
   await context.setOffline(true);
   await page.goto(`/analysis?fen=${encodeURIComponent(POSITION)}`);
-  await expect(page.getByRole("banner").getByText("Hors ligne")).toBeVisible();
+  await page.getByRole("tab", { name: "Moteur" }).click();
+  await expect(page.getByTestId("sidebar").getByText("Hors ligne")).toBeVisible();
   await expect(page.getByRole("list", { name: "Variantes principales" })).toContainText("Qxf7#", {
     timeout: 60_000,
   });
-  await page.getByRole("tab", { name: "Ouvertures" }).click();
+  await page.getByRole("tab", { name: /Bilan/ }).click();
+  await page.getByText("Explorateur d’ouvertures").click();
   await expect(page.getByTestId("opening-explorer")).toBeVisible();
 
   await page.goto("/settings");
