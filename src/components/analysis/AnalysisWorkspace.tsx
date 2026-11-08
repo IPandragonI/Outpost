@@ -32,7 +32,7 @@ import { NavControls } from "./NavControls";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { useLocale, useT } from "@/lib/i18n/useT";
 
-type Tab = "review" | "engine";
+type Tab = "moves" | "review" | "engine";
 
 function isTyping(target: EventTarget | null) {
   const el = target as HTMLElement | null;
@@ -493,8 +493,8 @@ export function AnalysisWorkspace() {
   const captured = useCapturedPieces();
   useOpeningBook();
 
-  // Game Review is what opens first; the engine tab sits right of it.
-  const [tab, setTab] = useState<Tab>("review");
+  // The moves (with the assessment of the selected one) open first, then the review.
+  const [tab, setTab] = useState<Tab>("moves");
 
   const node = getNode(tree, currentId);
   const lastMove = useMemo(() => {
@@ -542,6 +542,7 @@ export function AnalysisWorkspace() {
   const bottomColor = orientation === "white" ? "w" : "b";
 
   const tabs: { id: Tab; label: string }[] = [
+    { id: "moves", label: t("tabs.moves") },
     { id: "review", label: t("tabs.review") },
     { id: "engine", label: t("tabs.engine") },
   ];
@@ -552,15 +553,12 @@ export function AnalysisWorkspace() {
 
   return (
     // Phones and tablets: one column that scrolls with the page. From `lg` the workspace is
-    // exactly one viewport tall and each panel scrolls inside its own grid cell (every
-    // cell has `min-h-0`, so a long list can never stretch the page). `xl` adds the move
-    // list as a left column; `lg` keeps it at the bottom of the right column.
-    <div className="mx-auto grid w-full max-w-[1900px] gap-3 px-2 pt-2 pb-24 sm:px-3 lg:h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] lg:grid-rows-[auto_minmax(0,1fr)_minmax(11rem,34%)] lg:p-3 xl:grid-cols-[minmax(200px,15rem)_minmax(0,1fr)_minmax(340px,420px)] xl:grid-rows-[auto_minmax(0,1fr)]">
+    // exactly one viewport tall: the board on the left, and one tabbed panel on the right
+    // (moves, review, engine) whose content scrolls inside it. Every cell has `min-h-0`, so
+    // a long list can never stretch the page.
+    <div className="mx-auto grid w-full max-w-[1900px] gap-3 px-2 pt-2 pb-24 sm:px-3 lg:h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(360px,460px)] lg:p-3 xl:grid-cols-[minmax(0,1fr)_minmax(400px,480px)]">
       {/* Board */}
-      <section
-        className="flex min-h-0 min-w-0 flex-col gap-2 lg:col-start-1 lg:row-span-3 lg:row-start-1 xl:col-start-2 xl:row-span-2"
-        aria-label="Board"
-      >
+      <section className="flex min-h-0 min-w-0 flex-col gap-2" aria-label="Board">
         <Toolbar />
         <div className="mx-auto flex w-full flex-col gap-1 lg:max-w-[min(100%,calc(100dvh-9.5rem))]">
           <PlayerBar color={topColor} captured={captured} />
@@ -590,57 +588,53 @@ export function AnalysisWorkspace() {
         </div>
       </section>
 
-      {/* The selected move's assessment (and a line being previewed), next to the board. */}
-      <div className="flex min-h-0 min-w-0 flex-col gap-2 lg:col-start-2 lg:row-start-1 xl:col-start-3">
-        <PreviewBanner />
-        <section
-          className="panel h-36 shrink-0 overflow-y-auto p-3 lg:h-32"
-          data-testid="move-box"
-          aria-label={t("review.selected")}
-        >
-          <MoveInsight byNode={reviewState.byNode} />
-        </section>
-      </div>
-
-      {/* Move list with its navigation controls. */}
-      <section
-        className="panel relative flex h-72 min-h-0 min-w-0 flex-col lg:col-start-2 lg:row-start-3 lg:h-auto xl:col-start-1 xl:row-span-2 xl:row-start-1"
-        aria-label={t("tabs.moves")}
-      >
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-t-box">
-          <MoveList byNode={reviewState.byNode} />
-        </div>
-        <div className="hidden border-t border-base-content/10 p-1 lg:block">
-          <NavControls />
-        </div>
-      </section>
-
-      {/* Game Review and Engine: graph, then the two tabs. */}
-      <aside
-        className="panel flex min-h-0 min-w-0 flex-col lg:col-start-2 lg:row-start-2 xl:col-start-3"
-        aria-label={t("tabs.analysis")}
-      >
-        <div className="border-b border-base-content/10 px-2 pt-2 pb-1">
-          <h2 className="panel-title px-1">{t("graph.title")}</h2>
-          <EvalGraph byNode={reviewState.byNode} height={72} />
-        </div>
+      {/* The analysis panel: three tabs. */}
+      <aside className="panel flex min-h-0 min-w-0 flex-col" aria-label={t("tabs.analysis")}>
+        {preview && (
+          <div className="border-b border-base-content/10 p-2">
+            <PreviewBanner />
+          </div>
+        )}
         <Tabs tabs={tabs} active={tab} onChange={setTab} />
         {/* `relative` matters: the screen-reader labels inside (absolutely positioned) would
-            otherwise escape this scroller and grow the whole page. */}
+            otherwise escape the scroller and grow the whole page. */}
         <div
           role="tabpanel"
           id={`panel-${tab}`}
           aria-labelledby={`tab-${tab}`}
-          className="relative flex flex-col gap-3 p-3 lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
+          className={`relative flex flex-col lg:min-h-0 lg:flex-1 ${
+            tab === "moves" ? "" : "gap-3 p-3 lg:overflow-y-auto"
+          }`}
         >
-          {tab === "review" ? (
+          {tab === "moves" && (
             <>
+              {/* The selected move's assessment, then the move list under it. */}
+              <section
+                className="h-36 shrink-0 overflow-y-auto border-b border-base-content/10 p-3 lg:h-40"
+                data-testid="move-box"
+                aria-label={t("review.selected")}
+              >
+                <MoveInsight byNode={reviewState.byNode} />
+              </section>
+              <div className="flex h-72 min-h-0 flex-col overflow-hidden lg:h-auto lg:flex-1">
+                <MoveList byNode={reviewState.byNode} />
+              </div>
+              <div className="hidden border-t border-base-content/10 p-1 lg:block">
+                <NavControls />
+              </div>
+            </>
+          )}
+          {tab === "review" && (
+            <>
+              <div>
+                <h2 className="panel-title px-1">{t("graph.title")}</h2>
+                <EvalGraph byNode={reviewState.byNode} height={84} />
+              </div>
               <GameReport state={reviewState} fen={fen} />
               <ExplorerSection fen={fen} live={live} />
             </>
-          ) : (
-            <EnginePanel live={live} fen={fen} />
           )}
+          {tab === "engine" && <EnginePanel live={live} fen={fen} />}
         </div>
       </aside>
 

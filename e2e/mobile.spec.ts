@@ -32,15 +32,13 @@ test("phone: import a game, navigate with large controls, switch panels without 
   // Switching panels keeps the position.
   await page.getByRole("tab", { name: "Moteur" }).tap();
   await expect(page.getByTestId("engine-summary").or(page.getByText("Recherche…"))).toBeVisible();
-  await page.getByRole("tab", { name: /Bilan/ }).tap();
+  await page.getByRole("tab", { name: "Coups" }).tap();
   await expect(moves.locator('[aria-current="step"]')).toHaveText("Qh4+");
 
-  // The move assessment comes first, then the move list, then the chart and the tabs.
-  const graphBox = (await page.getByTestId("eval-graph").boundingBox())!;
+  // The move assessment comes first, then the move list, in the same panel.
   const insightBox = (await page.getByTestId("move-box").boundingBox())!;
   const listBox = (await moves.boundingBox())!;
   expect(insightBox.y + insightBox.height).toBeLessThanOrEqual(listBox.y);
-  expect(listBox.y + listBox.height).toBeLessThanOrEqual(graphBox.y);
 
   // The navigation drawer opens from the menu button and closes after a choice.
   await page.getByRole("button", { name: "Ouvrir le menu de navigation" }).tap();
