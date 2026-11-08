@@ -141,3 +141,33 @@ export async function fetchRecentGames(
   }
   return games.sort((a, b) => b.endTime - a.endTime).slice(0, limit);
 }
+
+/**
+ * Chess.com's time control: "600", "180+2" (seconds, then increment) or "1/86400" (daily,
+ * seconds per move). Returns the compact label ("10 min", "3+2") or the days per move.
+ */
+export function parseTimeControl(
+  control: string,
+): { label: string } | { days: number } | null {
+  const daily = /^1\/(\d+)$/.exec(control);
+  if (daily) return { days: Math.max(1, Math.round(Number(daily[1]) / 86_400)) };
+  const match = /^(\d+)(?:\+(\d+))?$/.exec(control);
+  if (!match) return null;
+  const base = Number(match[1]);
+  const increment = Number(match[2] ?? 0);
+  const minutes = base / 60;
+  const shown = Number.isInteger(minutes) ? String(minutes) : minutes.toFixed(1);
+  if (increment > 0) return { label: `${base < 60 ? base + "s" : shown}+${increment}` };
+  return { label: base < 60 ? `${base}s` : `${shown} min` };
+}
+
+/** The opening named in a Chess.com PGN's ECOUrl header, if any ("Sicilian Defense"). */
+export function openingFromPgn(pgn: string): string | null {
+  const slug = /\[ECOUrl "[^"]*\/openings\/([^"]+)"\]/.exec(pgn)?.[1];
+  if (!slug) return null;
+  // The slug ends with the moves that identify the variation ("...-3.Nf3-Nc6"): drop them.
+  const words = slug.split("-").filter(Boolean);
+  const end = words.findIndex((w) => /^\d+\.{0,3}/.test(w));
+  const name = (end === -1 ? words : words.slice(0, end)).join(" ").trim();
+  return name || null;
+}

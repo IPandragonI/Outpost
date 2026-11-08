@@ -57,7 +57,8 @@ test("fetches recent Chess.com games, imports them and marks them as imported", 
 }) => {
   const requested = await mockChessCom(page);
   await page.goto("/games");
-  await page.getByRole("tab", { name: "Chess.com" }).click();
+  // Chess.com is the default import source.
+  await expect(page.getByRole("tab", { name: "Chess.com" })).toHaveAttribute("aria-selected", "true");
   await page.getByLabel("Pseudo Chess.com").fill("TestPlayer");
   await page.getByRole("button", { name: "Récupérer mes parties" }).click();
 
@@ -70,15 +71,16 @@ test("fetches recent Chess.com games, imports them and marks them as imported", 
   // Only the username went to Chess.com, lowercased in the API path.
   expect(requested[0]).toBe(`${API}/testplayer/games/archives`);
 
-  await page.getByRole("button", { name: "Importer (2)" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "2 parties importées." })).toBeVisible();
-  // Already imported: offered to open, no longer to import.
-  await expect(list.getByRole("button", { name: "Ouvrir" })).toHaveCount(2);
-  await expect(page.getByTestId("game-list").getByRole("listitem")).toHaveCount(2);
+  // No checkboxes: every game has its own Analyze button.
+  await expect(list.getByRole("checkbox")).toHaveCount(0);
+  await expect(list.getByRole("button", { name: /^Analyser/ })).toHaveCount(2);
+  await list.getByRole("button", { name: "Analyser la partie contre Rival" }).first().click();
+  await page.waitForURL(/\/analysis\?game=/);
+  await page.goto("/games");
+  await expect(page.getByTestId("game-list").getByRole("listitem")).toHaveCount(1);
 
   // The username is remembered.
   await page.reload();
-  await page.getByRole("tab", { name: "Chess.com" }).click();
   await expect(page.getByLabel("Pseudo Chess.com")).toHaveValue("TestPlayer");
 });
 

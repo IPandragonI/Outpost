@@ -8,6 +8,7 @@ test("import, analyze, review a blunder, explore theory, and keep everything aft
 }) => {
   // 1. Import a valid PGN.
   await page.goto("/games");
+  await page.getByRole("tab", { name: "Coller un PGN" }).click();
   await page.getByLabel("Texte PGN").fill(OPERA);
   await page.getByRole("button", { name: "Importer", exact: true }).click();
 
@@ -88,6 +89,7 @@ test("import, analyze, review a blunder, explore theory, and keep everything aft
 
 test("reports invalid PGN with the faulty move", async ({ page }) => {
   await page.goto("/games");
+  await page.getByRole("tab", { name: "Coller un PGN" }).click();
   await page.getByLabel("Texte PGN").fill('[Event "Bad"]\n\n1. e4 e5 2. Ke3 *');
   await page.getByRole("button", { name: "Importer", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("2. Ke3");
@@ -95,6 +97,7 @@ test("reports invalid PGN with the faulty move", async ({ page }) => {
 
 test("navigating while the analysis runs keeps the board and engine in sync", async ({ page }) => {
   await page.goto("/games");
+  await page.getByRole("tab", { name: "Coller un PGN" }).click();
   await page.getByLabel("Texte PGN").fill(OPERA);
   await page.getByRole("button", { name: "Importer", exact: true }).click();
   await expect(page).toHaveURL(/\/analysis\?game=/);

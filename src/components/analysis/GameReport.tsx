@@ -17,7 +17,6 @@ import type { GameReviewState } from "@/hooks/useGameReview";
 import { useOpeningBook } from "@/hooks/useOpeningBook";
 import { OpeningExplorer } from "@/components/openings/OpeningExplorer";
 import { ClassificationBadge } from "./ClassificationBadge";
-import { MoveInsight } from "./MoveInsight";
 import { useT } from "@/lib/i18n/useT";
 
 const SHOWN: Classification[] = [
@@ -285,15 +284,6 @@ function GameReportImpl({ state, fen }: { state: GameReviewState; fen: string })
           .filter((v) => v && v !== "?")
           .join(" · ")}
       </p>
-
-      {/* The assessment of the selected move; keeps its height so the page does not jump. */}
-      <div
-        className="min-h-24 border-y border-base-content/10 py-2"
-        data-testid="move-box"
-        aria-label={t("review.selected")}
-      >
-        <MoveInsight byNode={state.byNode} />
-      </div>
 
       <OpeningSummary fen={fen} gameOpening={opening} />
 

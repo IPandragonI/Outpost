@@ -13,7 +13,7 @@ test("the home page presents the app and leads to the library and the lessons", 
 
   await page.getByRole("link", { name: "Analyser une partie" }).click();
   await expect(page).toHaveURL(/\/games$/);
-  await expect(page.getByLabel("Texte PGN")).toBeVisible();
+  await expect(page.getByLabel("Pseudo Chess.com")).toBeVisible();
 });
 
 test("a lesson can be stepped through and its exercise solved on the board", async ({ page }) => {

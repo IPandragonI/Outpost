@@ -7,6 +7,7 @@ test("phone: import a game, navigate with large controls, switch panels without 
   page,
 }) => {
   await page.goto("/games");
+  await page.getByRole("tab", { name: "Coller un PGN" }).click();
   await page.getByLabel("Texte PGN").fill(IMMORTAL);
   await page.getByRole("button", { name: "Importer", exact: true }).click();
   await expect(page).toHaveURL(/\/analysis\?game=/);
@@ -34,12 +35,12 @@ test("phone: import a game, navigate with large controls, switch panels without 
   await page.getByRole("tab", { name: /Bilan/ }).tap();
   await expect(moves.locator('[aria-current="step"]')).toHaveText("Qh4+");
 
-  // The advantage chart sits above the tabs, and the move list below the review.
+  // The move assessment comes first, then the move list, then the chart and the tabs.
   const graphBox = (await page.getByTestId("eval-graph").boundingBox())!;
   const insightBox = (await page.getByTestId("move-box").boundingBox())!;
   const listBox = (await moves.boundingBox())!;
-  expect(graphBox.y + graphBox.height).toBeLessThanOrEqual(insightBox.y);
   expect(insightBox.y + insightBox.height).toBeLessThanOrEqual(listBox.y);
+  expect(listBox.y + listBox.height).toBeLessThanOrEqual(graphBox.y);
 
   // The navigation drawer opens from the menu button and closes after a choice.
   await page.getByRole("button", { name: "Ouvrir le menu de navigation" }).tap();

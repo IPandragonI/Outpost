@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAnalysis } from "@/features/analysis/store";
+import { useSettings } from "@/features/settings/settings-store";
 import { isValidFen } from "@/lib/chess/position";
 import { AnalysisWorkspace } from "./AnalysisWorkspace";
 import { useT } from "@/lib/i18n/useT";
@@ -12,6 +13,7 @@ import { useT } from "@/lib/i18n/useT";
  * `/analysis?game=<id>` opens a saved game, `/analysis?fen=<fen>` a position on a fresh
  * board, `/analysis?moves=e2e4,e7e5` a line from the initial position; `/analysis` alone
  * keeps whatever was being analyzed, so moving between pages never loses the position.
+ * `&rerun=1` on a saved game runs a fresh analysis instead of reusing the stored one.
  */
 export function AnalysisPage() {
   const t = useT();
@@ -19,6 +21,7 @@ export function AnalysisPage() {
   const gameParam = params.get("game");
   const fenParam = params.get("fen");
   const movesParam = params.get("moves");
+  const rerunParam = params.get("rerun") === "1";
   const gameId = useAnalysis((s) => s.gameId);
   const loading = useAnalysis((s) => s.loading);
   const loadError = useAnalysis((s) => s.loadError);
@@ -26,7 +29,14 @@ export function AnalysisPage() {
   useEffect(() => {
     const store = useAnalysis.getState();
     if (gameParam) {
-      void store.loadGame(gameParam);
+      void store.loadGame(gameParam).then(() => {
+        if (!rerunParam) return;
+        window.history.replaceState(null, "", `/analysis?game=${gameParam}`);
+        const s = useAnalysis.getState();
+        if (s.gameId === gameParam && s.run.state !== "running") {
+          void s.startGameAnalysis(useSettings.getState().presetId);
+        }
+      });
     } else if (fenParam && isValidFen(fenParam)) {
       store.newBoard(fenParam);
     } else if (movesParam !== null) {
@@ -39,7 +49,7 @@ export function AnalysisPage() {
     } else if (store.gameId) {
       window.history.replaceState(null, "", `/analysis?game=${store.gameId}`);
     }
-  }, [gameParam, fenParam, movesParam]);
+  }, [gameParam, fenParam, movesParam, rerunParam]);
 
   if (loadError) {
     return (

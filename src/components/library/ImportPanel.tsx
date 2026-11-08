@@ -40,7 +40,7 @@ export function ImportPanel({
 }) {
   const t = useT();
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("paste");
+  const [mode, setMode] = useState<Mode>("chesscom");
   const [text, setText] = useState("");
   const [fen, setFen] = useState("");
   const [busy, setBusy] = useState(false);
@@ -89,9 +89,9 @@ export function ImportPanel({
     label: string;
     icon: (props: { className?: string }) => React.ReactNode;
   }[] = [
+    { id: "chesscom", label: "Chess.com", icon: ChessComMark },
     { id: "paste", label: t("import.tab.paste"), icon: ClipboardPaste },
     { id: "file", label: t("import.tab.file"), icon: FileUp },
-    { id: "chesscom", label: "Chess.com", icon: ChessComMark },
     { id: "board", label: t("import.tab.board"), icon: LayoutGrid },
   ];
 
@@ -108,7 +108,7 @@ export function ImportPanel({
               type="button"
               role="tab"
               aria-selected={mode === id}
-              className={`btn join-item btn-sm ${mode === id ? "btn-active" : ""}`}
+              className={`btn join-item btn-sm ${mode === id ? "btn-active btn-primary" : ""}`}
               onClick={() => {
                 setMode(id);
                 setFailure(null);

@@ -26,8 +26,8 @@ import { SettingsModal } from "./SettingsModal";
 
 const NAV = [
   { href: "/", label: "nav.homeShort", icon: House },
-  { href: "/analysis", label: "nav.analysis", icon: Swords },
   { href: "/games", label: "nav.library", icon: LayoutGrid },
+  { href: "/analysis", label: "nav.analysis", icon: Swords },
   { href: "/openings", label: "nav.openings", icon: BookOpen },
   { href: "/learn", label: "nav.learn", icon: GraduationCap },
 ] as const;
