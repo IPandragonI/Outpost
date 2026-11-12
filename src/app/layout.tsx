@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import { SerwistProvider } from "@serwist/turbopack/react";
 import { AppShell } from "@/components/layout/AppShell";
 import { EngineConfigSync } from "@/components/layout/EngineConfigSync";
@@ -9,16 +9,23 @@ import { LOCALE_STORAGE_KEY, THEME_STORAGE_KEY } from "@/features/settings/setti
 import { LocaleSync, SkipLink } from "@/components/layout/LocaleSync";
 import "./globals.css";
 
-const plexSans = IBM_Plex_Sans({
+// IBM Plex (OFL-1.1), latin subset, shipped with the app instead of fetched from Google at
+// build time: the build needs no network, works on any host, and the fonts are part of the
+// offline cache. Sans is a variable font (one file for every weight); Mono has one per weight.
+const plexSans = localFont({
+  src: "./fonts/plex-sans-latin.woff2",
   variable: "--font-plex-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: "100 700",
+  display: "swap",
 });
 
-const plexMono = IBM_Plex_Mono({
+const plexMono = localFont({
+  src: [
+    { path: "./fonts/plex-mono-latin-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/plex-mono-latin-500.woff2", weight: "500", style: "normal" },
+  ],
   variable: "--font-plex-mono",
-  subsets: ["latin"],
-  weight: ["400", "500"],
+  display: "swap",
 });
 
 const DARK_THEME_COLOR = "#1c1813";
