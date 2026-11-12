@@ -36,6 +36,15 @@ export interface PositionAnalysis {
   engine: string;
   /** False when the search was stopped before reaching its limit. */
   complete: boolean;
+  /**
+   * Set when the search stopped short of `limits.depth` on purpose (a forced move, or a
+   * search that had settled): the depth this result stands for, which is what cache
+   * lookups compare against.
+   */
+  requestedDepth?: number;
+  shortcut?: "forced" | "settled";
+  /** Fetched from a cloud evaluation service rather than searched here. */
+  source?: "cloud";
 }
 
 export interface EngineOptions {
@@ -60,6 +69,50 @@ export class EngineError extends Error {
 }
 
 const UPDATE_INTERVAL_MS = 200;
+
+/** A position with a single legal move is searched no deeper than this. */
+export const FORCED_MOVE_DEPTH = 12;
+/** Early stop: never before this depth (special labels and confidence need depth 12). */
+export const SETTLE_MIN_DEPTH = 12;
+/** Early stop: how many consecutive depths must agree. */
+export const SETTLE_DEPTHS = 3;
+/** Early stop: the score may move by this many centipawns over those depths. */
+export const SETTLE_CP = 10;
+
+export interface DepthResult {
+  depth: number;
+  move: string;
+  score: Score;
+}
+
+/**
+ * Whether a search has settled: over the last `SETTLE_DEPTHS` consecutive depths (the
+ * latest at least `SETTLE_MIN_DEPTH`) the best move is the same and the score stayed
+ * within `SETTLE_CP` centipawns (a mate must keep the same distance). Later depths of such
+ * a search almost never change the verdict, and they cost most of the time.
+ */
+export function isSettled(history: ReadonlyMap<number, DepthResult>, depth: number): boolean {
+  if (depth < SETTLE_MIN_DEPTH) return false;
+  const recent: DepthResult[] = [];
+  for (let d = depth; d > depth - SETTLE_DEPTHS; d--) {
+    const entry = history.get(d);
+    if (!entry) return false;
+    recent.push(entry);
+  }
+  const first = recent[0]!;
+  if (!recent.every((r) => r.move === first.move)) return false;
+  if (first.score.kind === "mate") {
+    return recent.every(
+      (r) =>
+        r.score.kind === "mate" &&
+        r.score.winner === (first.score as { winner: Color }).winner &&
+        r.score.moves === (first.score as { moves: number }).moves,
+    );
+  }
+  const values = recent.map((r) => (r.score.kind === "cp" ? r.score.cp : NaN));
+  if (values.some(Number.isNaN)) return false;
+  return Math.max(...values) - Math.min(...values) <= SETTLE_CP;
+}
 
 /** Score of a position without legal moves, which engines report inconsistently. */
 export function terminalScore(fen: string): Score | null {
@@ -191,6 +244,17 @@ export class UciEngine {
       };
     }
 
+    // A position with one legal move needs no deep search: its score is that of the move.
+    const forced =
+      limits.depth !== undefined &&
+      limits.depth > FORCED_MOVE_DEPTH &&
+      new Chess(fen).moves().length === 1;
+    const searchLimits: SearchLimits = forced ? { ...limits, depth: FORCED_MOVE_DEPTH } : limits;
+    let marker: Pick<PositionAnalysis, "requestedDepth" | "shortcut"> = forced
+      ? { requestedDepth: limits.depth!, shortcut: "forced" }
+      : {};
+    const history = new Map<number, DepthResult>();
+
     if (limits.multiPv !== this.multiPv) {
       this.transport.post(`setoption name MultiPV value ${limits.multiPv}`);
       this.multiPv = limits.multiPv;
@@ -223,7 +287,8 @@ export class UciEngine {
         timeMs: best?.timeMs ?? Date.now() - started,
         limits,
         engine: this.label ?? this.name,
-        complete,
+        complete: complete || marker.shortcut === "settled",
+        ...marker,
       };
     };
 
@@ -241,6 +306,21 @@ export class UciEngine {
           // A bound is only a hint: keep the previous exact score of the same depth.
           if (info.bound && previous && !previous.bound && previous.depth >= info.depth) return;
           lines.set(info.multipv, info);
+          if (
+            limits.earlyStop &&
+            limits.depth &&
+            info.multipv === 1 &&
+            !info.bound &&
+            !stopped &&
+            info.pv[0] !== undefined
+          ) {
+            history.set(info.depth, { depth: info.depth, move: info.pv[0], score: info.score });
+            if (info.depth < limits.depth && isSettled(history, info.depth)) {
+              marker = { requestedDepth: limits.depth, shortcut: "settled" };
+              stopped = true;
+              this.transport.post("stop");
+            }
+          }
           const now = Date.now();
           if (onUpdate && now - lastUpdate > UPDATE_INTERVAL_MS) {
             lastUpdate = now;
@@ -256,7 +336,7 @@ export class UciEngine {
               if (k > 1 && line.depth < best.depth - 1) lines.delete(k);
             }
           }
-          resolve(snapshot(!stopped, message.move));
+          resolve(snapshot(!stopped || marker.shortcut === "settled", message.move));
         }
       };
       const onError = (error: Error) => {
@@ -272,7 +352,7 @@ export class UciEngine {
       this.errorHandlers.add(onError);
       signal?.addEventListener("abort", onAbort);
       this.transport.post(`position fen ${fen}`);
-      this.transport.post(goCommand(limits));
+      this.transport.post(goCommand(searchLimits));
       if (signal?.aborted) onAbort();
     });
   }

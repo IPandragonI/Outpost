@@ -18,6 +18,7 @@ import { describeStorageError, type GameRecord } from "@/features/storage/databa
 import type { MessageKey } from "@/lib/i18n/translate";
 import { useLocale, useT } from "@/lib/i18n/useT";
 import { useOnline } from "@/hooks/useOnline";
+import { getEngineService } from "@/features/engine/browser-engine";
 import { saveParsedGames } from "./import-games";
 
 const OUTCOME_STYLE = {
@@ -120,8 +121,10 @@ export function ChessComImport({
     }
   };
 
-  /** Imports the game when it is new, then opens it: the analysis starts there. */
+  /** Imports the game when it is new, then opens it on its review screen. */
   const analyzeGame = async (game: ChessComGame, rerun = false) => {
+    // The analysis is about to start: load the engines while the game is imported.
+    getEngineService().warmUp(8);
     const existing = known.get(game.url);
     if (existing) {
       router.push(`/analysis?game=${existing.id}${rerun ? "&rerun=1" : ""}`);

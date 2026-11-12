@@ -8,10 +8,13 @@ import { EngineError, UciEngine, type EngineTransport, type PositionAnalysis } f
  * - One primary engine (with the configured threads) serves "interactive" searches (the
  *   position on the board) first; they preempt background work on it, and a preempted
  *   search is put back in the queue, not lost.
- * - A few single-thread helper engines take only "background" searches (whole-game
- *   analysis), so the positions of a game are searched in parallel. Searching separate
- *   positions in parallel scales much better than giving one search more threads. Helpers
- *   start when background work is waiting and stop after a short idle time, so they do
+ * - Single-thread helper engines (the single-thread build: no shared memory, no thread
+ *   overhead) take the "background" searches (whole-game analysis), so the positions of a
+ *   game are searched in parallel. Searching separate positions in parallel scales much
+ *   better than giving one search more threads, so the primary engine, whose threads suit
+ *   one position at a time, is kept free for the position on the board and only takes
+ *   background work when there are no helpers. Helpers start when background work is
+ *   waiting (or ahead of it, see `warmUp`) and stop after a short idle time, so they do
  *   not hold memory while the user only browses.
  * - Cancelling a queued search removes it; cancelling a running one stops its engine and
  *   resolves with the partial result.
@@ -28,6 +31,14 @@ export interface EngineConfig {
   hashMb: number;
   /** Extra single-thread engines for background work (0: everything on the primary). */
   helpers?: number;
+  /**
+   * Whether the primary engine also takes background work. Default: only when there are
+   * no helpers (it is then the only engine); set it to keep the older "primary plus
+   * helpers" layout, e.g. to compare layouts.
+   */
+  primaryBackground?: boolean;
+  /** Build the helpers run (default: the single-thread build). */
+  helperFlavor?: EngineFlavor;
 }
 
 export type EngineStatus =
@@ -127,9 +138,41 @@ export class EngineService {
     return this.config;
   }
 
+  private helperCount(): number {
+    return this.helpersBroken ? 0 : (this.resolvedConfig().helpers ?? 0);
+  }
+
+  /** Whether the primary engine takes background work too. */
+  private primaryTakesBackground(): boolean {
+    return this.helperCount() === 0 || this.resolvedConfig().primaryBackground === true;
+  }
+
   /** How many background searches can run at once. */
   get parallelism(): number {
-    return 1 + (this.helpersBroken ? 0 : (this.resolvedConfig().helpers ?? 0));
+    return Math.max(1, this.helperCount() + (this.primaryTakesBackground() ? 1 : 0));
+  }
+
+  /**
+   * Starts engines ahead of use, so the first search does not pay for loading the build:
+   * the primary engine, and `helpers` helpers (at most the configured number) for a
+   * whole-game analysis about to start. Helpers stop again after their idle time.
+   */
+  warmUp(helpers = 0) {
+    const wanted = Math.min(helpers, this.helperCount());
+    this.ensureSlots(wanted);
+    for (const slot of this.slots.slice(0, 1 + wanted)) {
+      if (slot.running) continue;
+      void this.ensureEngine(slot).then(
+        () => {
+          if (slot.index > 0 && !slot.running) this.scheduleHelperStop(slot);
+        },
+        () => {},
+      );
+    }
+  }
+
+  private ensureSlots(helperCount: number) {
+    while (this.slots.length < 1 + helperCount) this.slots.push(this.newSlot(this.slots.length));
   }
 
   /** Applies user resource settings; the engines restart on their next search. */
@@ -221,26 +264,33 @@ export class EngineService {
     this.pump();
   }
 
-  /** Next job for an engine: interactive first (primary only), then its own lane. */
-  private takeJob(slot: Slot, engines: number): Job | null {
+  /**
+   * Next job for an engine: interactive first (primary only), then background work in
+   * its own lane, then any background work. The primary engine takes background work only
+   * when it is meant to (see primaryTakesBackground).
+   */
+  private takeJob(slot: Slot): Job | null {
+    const primaryBackground = this.primaryTakesBackground();
     let index = slot.index === 0 ? this.queue.findIndex((j) => j.priority === "interactive") : -1;
-    if (index === -1) {
+    if (index === -1 && (slot.index > 0 || primaryBackground)) {
+      const engines = this.helperCount() + (primaryBackground ? 1 : 0);
+      const ordinal = primaryBackground ? slot.index : slot.index - 1;
       index = this.queue.findIndex(
-        (j) => j.priority === "background" && (j.lane ?? 0) % engines === slot.index,
+        (j) => j.priority === "background" && (j.lane ?? 0) % engines === ordinal,
       );
+      if (index === -1) index = this.queue.findIndex((j) => j.priority === "background");
     }
-    if (index === -1) index = this.queue.findIndex((j) => j.priority === "background");
     if (index === -1) return null;
     return this.queue.splice(index, 1)[0]!;
   }
 
   /** Gives waiting jobs to free engines: interactive ones to the primary only. */
   private pump() {
-    const helperCount = this.helpersBroken ? 0 : (this.resolvedConfig().helpers ?? 0);
-    while (this.slots.length < 1 + helperCount) this.slots.push(this.newSlot(this.slots.length));
+    const helperCount = this.helperCount();
+    this.ensureSlots(helperCount);
     for (const slot of this.slots.slice(0, 1 + helperCount)) {
       if (slot.running) continue;
-      const job = this.takeJob(slot, 1 + helperCount);
+      const job = this.takeJob(slot);
       if (job) void this.run(slot, job);
     }
   }
@@ -334,15 +384,18 @@ export class EngineService {
     throw lastError instanceof Error ? lastError : new EngineError(message);
   }
 
-  /** Helpers: same build as the primary, one thread, a smaller hash table each. */
+  /** Helpers: the single-thread build, one thread, a smaller hash table each. */
   private async startHelper(slot: Slot): Promise<UciEngine> {
     const config = this.resolvedConfig();
-    const engine = await UciEngine.create(this.env.createTransport(config.flavor), {
-      threads: 1,
-      hashMb: Math.max(16, Math.floor(config.hashMb / 2)),
-      label: ENGINE_NAME,
-      ...(this.env.initTimeoutMs ? { initTimeoutMs: this.env.initTimeoutMs } : {}),
-    });
+    const engine = await UciEngine.create(
+      this.env.createTransport(config.helperFlavor ?? "lite-single"),
+      {
+        threads: 1,
+        hashMb: Math.max(16, Math.floor(config.hashMb / 2)),
+        label: ENGINE_NAME,
+        ...(this.env.initTimeoutMs ? { initTimeoutMs: this.env.initTimeoutMs } : {}),
+      },
+    );
     slot.engine = engine;
     return engine;
   }

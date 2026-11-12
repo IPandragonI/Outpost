@@ -505,6 +505,13 @@ export function SettingsPage() {
             ))}
           </select>
         </Row>
+        <Row label={t("settings.cloudEval")} hint={t("settings.cloudEvalHint")}>
+          <Toggle
+            label={t("settings.cloudEval")}
+            checked={settings.cloudEval}
+            onChange={(v) => set({ cloudEval: v })}
+          />
+        </Row>
         <Row
           label={t("settings.threads")}
           hint={device.isolated ? t("settings.threadsHint") : t("settings.threadsUnavailable")}

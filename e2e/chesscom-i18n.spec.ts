@@ -58,7 +58,10 @@ test("fetches recent Chess.com games, imports them and marks them as imported", 
   const requested = await mockChessCom(page);
   await page.goto("/games");
   // Chess.com is the default import source.
-  await expect(page.getByRole("tab", { name: "Chess.com" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Chess.com" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await page.getByLabel("Pseudo Chess.com").fill("TestPlayer");
   await page.getByRole("button", { name: "Récupérer mes parties" }).click();
 
@@ -76,6 +79,8 @@ test("fetches recent Chess.com games, imports them and marks them as imported", 
   await expect(list.getByRole("button", { name: /^Analyser/ })).toHaveCount(2);
   await list.getByRole("button", { name: "Analyser la partie contre Rival" }).first().click();
   await page.waitForURL(/\/analysis\?game=/);
+  // The account's own side is at the bottom of the board (here TestPlayer plays Black).
+  await expect(page.getByTestId("player-bottom")).toContainText("TestPlayer");
   await page.goto("/games");
   await expect(page.getByTestId("game-list").getByRole("listitem")).toHaveCount(1);
 

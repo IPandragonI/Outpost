@@ -135,11 +135,11 @@ describe("EngineService pool", () => {
       // suite, a healthy engine can take more than a second to start.
       initTimeoutMs: broken ? 400 : 20_000,
       helperIdleMs: 5_000,
-      detectConfig: () => ({ flavor: "lite-single", threads: 1, hashMb: 16, helpers }),
+      detectConfig: () => ({ flavor: "lite-threaded", threads: 1, hashMb: 16, helpers }),
       createTransport: (flavor) => {
         created.push(flavor);
-        // With `broken`, only the first engine (the primary) starts.
-        return broken && created.length > 1 ? silentTransport() : nodeEngineTransport();
+        // With `broken`, the helpers (single-thread build) never answer; the primary starts.
+        return broken && flavor === "lite-single" ? silentTransport() : nodeEngineTransport();
       },
     };
   }
@@ -147,7 +147,8 @@ describe("EngineService pool", () => {
   it("spreads background searches over the helper engines", async () => {
     const created: string[] = [];
     service = new EngineService(env(2, created));
-    expect(service.parallelism).toBe(3);
+    // The primary engine is kept for the board: only the two helpers take background work.
+    expect(service.parallelism).toBe(2);
     const fens = FENS.slice(0, 6);
     const results = await Promise.all(
       fens.map(
@@ -156,7 +157,7 @@ describe("EngineService pool", () => {
       ),
     );
     expect(results.map((r) => r.fen)).toEqual(fens);
-    expect(created).toHaveLength(3); // primary + two helpers
+    expect(created).toEqual(["lite-single", "lite-single"]); // two single-thread helpers
   });
 
   it("still serves the board first while helpers work", async () => {

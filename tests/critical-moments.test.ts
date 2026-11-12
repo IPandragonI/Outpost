@@ -10,6 +10,7 @@ function move(ply: number, classification: string, loss = 0): ReviewedMove {
     san: `m${ply}`,
     ply,
     isBook: false,
+    phase: "middlegame",
     accuracy: 100,
     result: { classification, loss } as unknown as ReviewedMove["result"],
   };

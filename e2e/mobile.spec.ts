@@ -26,6 +26,12 @@ test("phone: import a game, navigate with large controls, switch panels without 
   expect(nextBox.y).toBeGreaterThan(viewport.height * 0.8);
 
   for (let i = 0; i < 6; i++) await next.tap();
+  // The game is analyzed by itself; the review opens when the analysis is complete.
+  await page.getByLabel(/Profondeur d.analyse/).selectOption("quick");
+  const startButton = page.getByRole("button", { name: "Démarrer le bilan" });
+  await expect(startButton).toBeEnabled({ timeout: 180_000 });
+  await startButton.tap();
+  await page.getByRole("tab", { name: "Coups" }).tap();
   const moves = page.getByTestId("move-list");
   await expect(moves.locator('[aria-current="step"]')).toHaveText("Qh4+");
 
@@ -35,7 +41,7 @@ test("phone: import a game, navigate with large controls, switch panels without 
   await page.getByRole("tab", { name: "Coups" }).tap();
   await expect(moves.locator('[aria-current="step"]')).toHaveText("Qh4+");
 
-  // The move assessment comes first, then the move list, in the same panel.
+  // The move comment bubble sits between the board and the tabs, above the move list.
   const insightBox = (await page.getByTestId("move-box").boundingBox())!;
   const listBox = (await moves.boundingBox())!;
   expect(insightBox.y + insightBox.height).toBeLessThanOrEqual(listBox.y);
@@ -64,6 +70,7 @@ test("phone: tap-to-move on an empty board enters a game", async ({ page }) => {
   await page.locator("#board-square-e4").tap();
   await page.locator("#board-square-e7").tap();
   await page.locator("#board-square-e5").tap();
+  await page.getByRole("tab", { name: "Coups" }).tap();
   const moves = page.getByTestId("move-list");
   await expect(moves.getByRole("button", { name: "e4" })).toBeVisible();
   await expect(moves.locator('[aria-current="step"]')).toHaveText("e5");

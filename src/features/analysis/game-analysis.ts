@@ -1,4 +1,5 @@
-import type { AnalysisCache } from "@/features/engine/analysis-cache";
+import { forFen, satisfies, type AnalysisCache } from "@/features/engine/analysis-cache";
+import { positionKey } from "@/lib/chess/position";
 import type { SearchLimits } from "@/features/engine/uci";
 import type { PositionAnalysis } from "@/features/engine/uci-engine";
 
@@ -102,6 +103,9 @@ export async function analyzePositions(
   const concurrency = Math.max(1, Math.min(options.concurrency ?? 1, fens.length));
   const laneSize = Math.ceil(fens.length / concurrency);
 
+  // Positions repeated within the game (a shuffle back and forth) are searched once.
+  const seen = new Map<string, PositionAnalysis>();
+
   const worker = async (lane: number) => {
     const end = Math.min(fens.length, (lane + 1) * laneSize);
     for (let i = lane * laneSize; i < end; i++) {
@@ -115,10 +119,19 @@ export async function analyzePositions(
           options.onPosition?.(i, cached, true);
           continue;
         }
+        const repeated = seen.get(positionKey(fen));
+        if (repeated && satisfies(repeated, options.engine, limits)) {
+          results[i] = forFen(repeated, fen);
+          options.onPosition?.(i, results[i]!, true);
+          continue;
+        }
         const analysis = await search(fen, limits, signal, lane);
         if (signal.aborted && !analysis.complete) return;
         results[i] = analysis;
-        if (analysis.complete) await options.cache?.put(analysis);
+        if (analysis.complete) {
+          seen.set(positionKey(fen), analysis);
+          await options.cache?.put(analysis);
+        }
         options.onPosition?.(i, analysis, false);
       } catch (error) {
         failure ??= error;

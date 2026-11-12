@@ -120,6 +120,11 @@ export interface SearchLimits {
   movetimeMs?: number;
   /** Number of principal variations (MultiPV). */
   multiPv: number;
+  /**
+   * Stop before `depth` once the search has settled: the best move and the score have not
+   * moved over the last depths (see isSettled). Only meaningful with `depth`.
+   */
+  earlyStop?: boolean;
 }
 
 export function goCommand(limits: SearchLimits): string {

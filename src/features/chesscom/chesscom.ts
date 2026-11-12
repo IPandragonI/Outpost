@@ -146,9 +146,7 @@ export async function fetchRecentGames(
  * Chess.com's time control: "600", "180+2" (seconds, then increment) or "1/86400" (daily,
  * seconds per move). Returns the compact label ("10 min", "3+2") or the days per move.
  */
-export function parseTimeControl(
-  control: string,
-): { label: string } | { days: number } | null {
+export function parseTimeControl(control: string): { label: string } | { days: number } | null {
   const daily = /^1\/(\d+)$/.exec(control);
   if (daily) return { days: Math.max(1, Math.round(Number(daily[1]) / 86_400)) };
   const match = /^(\d+)(?:\+(\d+))?$/.exec(control);

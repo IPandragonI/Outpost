@@ -12,6 +12,7 @@ import { getNode, isOnMainline, type NodeId } from "@/features/games/variation-t
 import { positionKey } from "@/lib/chess/position";
 import { useOpeningBook } from "@/hooks/useOpeningBook";
 import { ClassificationBadge, CLASSIFICATION_TEXT } from "./ClassificationBadge";
+import type { MessageKey } from "@/lib/i18n/messages";
 import { useT } from "@/lib/i18n/useT";
 
 /** Verdict on the current move: why it is good or bad, and what Stockfish preferred. */
@@ -105,7 +106,7 @@ function MoveInsightImpl({ byNode }: { byNode: Record<NodeId, MoveClassification
       <header className="flex items-center gap-2">
         <ClassificationBadge classification={r.classification} className="size-6 text-[11px]" />
         <h3
-          className={`min-w-0 flex-1 truncate text-[15px] leading-6 font-semibold ${CLASSIFICATION_TEXT[r.classification]}`}
+          className={`min-w-0 flex-1 text-[15px] leading-6 font-semibold ${CLASSIFICATION_TEXT[r.classification]}`}
           title={`${explanation.headline} — ${t(`cls.${r.classification}.desc`)}${result.live ? ` ${t("insight.judgedLive")}` : ""}`}
         >
           {explanation.headline}
@@ -123,11 +124,21 @@ function MoveInsightImpl({ byNode }: { byNode: Record<NodeId, MoveClassification
           {opening.name}
         </p>
       ) : (
-        explanation.details[0] && (
-          <p className="line-clamp-2 text-sm leading-5 text-base-content/80">
-            {explanation.details[0]}
+        explanation.details.slice(0, 2).map((line, i) => (
+          <p key={i} className="text-sm leading-5 text-base-content/80">
+            {line}
           </p>
-        )
+        ))
+      )}
+
+      {explanation.themes.length > 0 && (
+        <ul className="flex flex-wrap gap-1" aria-label={t("report.themes")}>
+          {explanation.themes.map((hit) => (
+            <li key={hit.theme} className="badge badge-soft badge-sm badge-warning">
+              {t(`theme.${hit.theme}` as MessageKey)}
+            </li>
+          ))}
+        </ul>
       )}
 
       {showBest && (

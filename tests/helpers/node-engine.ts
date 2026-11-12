@@ -1,4 +1,6 @@
 import { createRequire } from "node:module";
+import { join } from "node:path";
+import { Worker } from "node:worker_threads";
 import type { EngineTransport } from "@/features/engine/uci-engine";
 
 const require = createRequire(import.meta.url);
@@ -31,6 +33,25 @@ export function nodeEngineTransport(
     listen: (handler) => void listeners.push(handler),
     onError: () => {},
     terminate: () => engine.terminate?.(),
+  };
+}
+
+/**
+ * The same engine in its own thread (see engine-worker.cjs), as a Web Worker would run it
+ * in the browser. Needed to measure engines that really run in parallel: the transport
+ * above runs the single-thread build in the calling thread.
+ */
+export function workerEngineTransport(
+  flavor: "lite-single" | "lite" = "lite-single",
+): EngineTransport {
+  const worker = new Worker(join(process.cwd(), "tests/helpers/engine-worker.cjs"), {
+    workerData: { flavor },
+  });
+  return {
+    post: (command) => worker.postMessage(command),
+    listen: (handler) => void worker.on("message", (line: string) => handler(line)),
+    onError: (handler) => void worker.on("error", handler),
+    terminate: () => void worker.terminate(),
   };
 }
 

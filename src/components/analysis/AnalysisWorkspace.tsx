@@ -6,6 +6,7 @@ import { Download, FilePlus2, Keyboard, Pencil, Save, X } from "lucide-react";
 import type { Arrow } from "react-chessboard";
 import { ChessBoard, type BoardMove } from "@/components/board/ChessBoard";
 import { useAnalysis, useBoardFen } from "@/features/analysis/store";
+import { sideOf } from "@/features/analysis/perspective";
 import { buildAnalysisExport } from "@/features/analysis/analysis-export";
 import { exportLine, exportPgn } from "@/features/games/pgn-export";
 import { getNode, mainline, pathTo } from "@/features/games/variation-tree";
@@ -25,7 +26,7 @@ import { CapturedPieces } from "./CapturedPieces";
 import { EnginePanel } from "./EnginePanel";
 import { EvalBar } from "./EvalBar";
 import { EvalGraph } from "./EvalGraph";
-import { ExplorerSection, GameReport } from "./GameReport";
+import { ExplorerSection, GameReport, ReviewStartPanel } from "./GameReport";
 import { MoveInsight } from "./MoveInsight";
 import { MoveList } from "./MoveList";
 import { NavControls } from "./NavControls";
@@ -126,7 +127,15 @@ function PreviewBanner() {
   );
 }
 
-function PlayerBar({ color, captured }: { color: "w" | "b"; captured: CapturedPiecesData }) {
+function PlayerBar({
+  color,
+  captured,
+  position,
+}: {
+  color: "w" | "b";
+  captured: CapturedPiecesData;
+  position: "top" | "bottom";
+}) {
   const headers = useAnalysis((s) => s.headers);
   const t = useT();
   const tree = useAnalysis((s) => s.tree);
@@ -145,7 +154,7 @@ function PlayerBar({ color, captured }: { color: "w" | "b"; captured: CapturedPi
   }, [tree, currentId, color]);
   const known = name && name !== "?";
   return (
-    <div className="flex h-7 items-center gap-2 px-0.5 text-sm">
+    <div className="flex h-7 items-center gap-2 px-0.5 text-sm" data-testid={`player-${position}`}>
       <span
         className={`inline-block size-3 rounded-sm ring-1 ring-base-content/30 ${color === "w" ? "bg-eval-white" : "bg-eval-black"}`}
         aria-hidden="true"
@@ -445,38 +454,9 @@ function useNavigationSound(userMoveRef: { current: boolean }) {
   }, [currentId, tree, play, onNavigate, userMoveRef]);
 }
 
-/**
- * Starts the whole-game analysis when a game is opened, unless it was already analyzed
- * (the stored results are loaded before this screen shows) or the user stopped it. A
- * partial analysis from an earlier visit resumes with the preset it was started with.
- * Boards typed in by hand are analyzed on request only: they change with every move.
- */
-function useAutoAnalysis() {
-  const gameId = useAnalysis((s) => s.gameId);
-  const runState = useAnalysis((s) => s.run.state);
-  const loading = useAnalysis((s) => s.loading);
-  const presetId = useSettings((s) => s.presetId);
-  const hydrated = useSettings((s) => s.hydrated);
-  const started = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (loading || !hydrated) return;
-    const s = useAnalysis.getState();
-    if (!s.gameId && !s.pgn) return;
-    if (mainline(s.tree).length < 2) return;
-    const key = s.gameId ?? s.pgn;
-    if (started.current === key) return;
-    started.current = key;
-    if (s.run.state === "running" || s.run.state === "done") return;
-    if (s.run.state === "cancelled" && s.run.userStopped) return;
-    void s.startGameAnalysis(s.run.presetId ?? presetId);
-  }, [gameId, runState, loading, hydrated, presetId]);
-}
-
 export function AnalysisWorkspace() {
   const t = useT();
   useKeyboardShortcuts();
-  useAutoAnalysis();
   const userMoveRef = useRef(false);
   useNavigationSound(userMoveRef);
   const playSound = useMoveSound();
@@ -493,8 +473,42 @@ export function AnalysisWorkspace() {
   const captured = useCapturedPieces();
   useOpeningBook();
 
-  // The moves (with the assessment of the selected one) open first, then the review.
-  const [tab, setTab] = useState<Tab>("moves");
+  // The review opens first, then the moves, then the engine.
+  const [tab, setTab] = useState<Tab>("review");
+
+  // A game opens on the review start screen, and its analysis starts by itself. The detailed
+  // review (the three tabs) opens when the user presses "Démarrer le bilan", which is only
+  // possible once the analysis is complete and starts no analysis of its own. A game whose
+  // analysis was already stored (or is already running) opens the tabs directly; a board
+  // typed in by hand has nothing to review, so it always shows the tabs.
+  const gameId = useAnalysis((s) => s.gameId);
+  const gameKey = useAnalysis((s) => s.gameId ?? (s.pgn || null));
+  const headers = useAnalysis((s) => s.headers);
+  const loading = useAnalysis((s) => s.loading);
+  const hydrated = useSettings((s) => s.hydrated);
+  const username = useSettings((s) => s.chessComUsername);
+  const isGame = gameKey !== null;
+  const restored = useAnalysis((s) => s.restored);
+  const [revealed, setRevealed] = useState<string | null>(null);
+  const started = !isGame || mainline(tree).length < 2 || restored || revealed === gameKey;
+
+  const analysisFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (loading || !hydrated || gameKey === null) return;
+    const s = useAnalysis.getState();
+    if (mainline(s.tree).length < 2 || analysisFor.current === gameKey) return;
+    analysisFor.current = gameKey;
+    if (s.run.state === "idle") void s.startGameAnalysis(useSettings.getState().presetId);
+  }, [loading, hydrated, gameKey]);
+
+  // The player whose Chess.com account is saved is at the bottom of the board. Settings load
+  // after the page, so this also runs once they are there (once per game: flipping stays free).
+  const orientedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!hydrated || !gameId || orientedFor.current === gameId) return;
+    orientedFor.current = gameId;
+    useAnalysis.getState().setOrientation(sideOf(headers, username) === "b" ? "black" : "white");
+  }, [hydrated, gameId, headers, username]);
 
   const node = getNode(tree, currentId);
   const lastMove = useMemo(() => {
@@ -542,8 +556,8 @@ export function AnalysisWorkspace() {
   const bottomColor = orientation === "white" ? "w" : "b";
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: "moves", label: t("tabs.moves") },
     { id: "review", label: t("tabs.review") },
+    { id: "moves", label: t("tabs.moves") },
     { id: "engine", label: t("tabs.engine") },
   ];
 
@@ -556,12 +570,12 @@ export function AnalysisWorkspace() {
     // exactly one viewport tall: the board on the left, and one tabbed panel on the right
     // (moves, review, engine) whose content scrolls inside it. Every cell has `min-h-0`, so
     // a long list can never stretch the page.
-    <div className="mx-auto grid w-full max-w-[1900px] gap-3 px-2 pt-2 pb-24 sm:px-3 lg:h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(360px,460px)] lg:p-3 xl:grid-cols-[minmax(0,1fr)_minmax(400px,480px)]">
+    <div className="mx-auto grid w-full max-w-[1900px] gap-3 px-2 pt-2 pb-24 sm:px-3 lg:h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(360px,400px)] lg:p-3 xl:grid-cols-[minmax(0,1fr)_minmax(400px,400px)]">
       {/* Board */}
       <section className="flex min-h-0 min-w-0 flex-col gap-2" aria-label="Board">
         <Toolbar />
         <div className="mx-auto flex w-full flex-col gap-1 lg:max-w-[min(100%,calc(100dvh-9.5rem))]">
-          <PlayerBar color={topColor} captured={captured} />
+          <PlayerBar color={topColor} captured={captured} position="top" />
           <div className="flex gap-2">
             <div className="hidden sm:flex">
               <EvalBar score={score} orientation={orientation} pending={live.searching} />
@@ -578,7 +592,7 @@ export function AnalysisWorkspace() {
               />
             </div>
           </div>
-          <PlayerBar color={bottomColor} captured={captured} />
+          <PlayerBar color={bottomColor} captured={captured} position="bottom" />
           <div className="flex items-center gap-2 sm:hidden">
             <EvalBar score={score} orientation={orientation} direction="horizontal" />
             <span className="tabular min-w-24 text-right font-mono text-xs" aria-hidden="true">
@@ -595,47 +609,54 @@ export function AnalysisWorkspace() {
             <PreviewBanner />
           </div>
         )}
-        <Tabs tabs={tabs} active={tab} onChange={setTab} />
-        {/* `relative` matters: the screen-reader labels inside (absolutely positioned) would
+        {!started ? (
+          <ReviewStartPanel state={reviewState} onStart={() => setRevealed(gameKey)} />
+        ) : (
+          <>
+            <Tabs tabs={tabs} active={tab} onChange={setTab} />
+            {/* `relative` matters: the screen-reader labels inside (absolutely positioned) would
             otherwise escape the scroller and grow the whole page. */}
-        <div
-          role="tabpanel"
-          id={`panel-${tab}`}
-          aria-labelledby={`tab-${tab}`}
-          className={`relative flex flex-col lg:min-h-0 lg:flex-1 ${
-            tab === "moves" ? "" : "gap-3 p-3 lg:overflow-y-auto"
-          }`}
-        >
-          {tab === "moves" && (
-            <>
-              {/* The selected move's assessment, then the move list under it. */}
-              <section
-                className="h-36 shrink-0 overflow-y-auto border-b border-base-content/10 p-3 lg:h-40"
-                data-testid="move-box"
-                aria-label={t("review.selected")}
-              >
-                <MoveInsight byNode={reviewState.byNode} />
-              </section>
-              <div className="flex h-72 min-h-0 flex-col overflow-hidden lg:h-auto lg:flex-1">
-                <MoveList byNode={reviewState.byNode} />
-              </div>
-              <div className="hidden border-t border-base-content/10 p-1 lg:block">
-                <NavControls />
-              </div>
-            </>
-          )}
-          {tab === "review" && (
-            <>
-              <div>
-                <h2 className="panel-title px-1">{t("graph.title")}</h2>
-                <EvalGraph byNode={reviewState.byNode} height={84} />
-              </div>
-              <GameReport state={reviewState} fen={fen} />
-              <ExplorerSection fen={fen} live={live} />
-            </>
-          )}
-          {tab === "engine" && <EnginePanel live={live} fen={fen} />}
-        </div>
+            <div
+              role="tabpanel"
+              id={`panel-${tab}`}
+              aria-labelledby={`tab-${tab}`}
+              className={`relative flex flex-col lg:min-h-0 lg:flex-1 ${
+                tab === "moves" ? "" : "gap-3 p-3 lg:overflow-y-auto"
+              }`}
+            >
+              {tab === "moves" && (
+                <>
+                  {/* The selected move's assessment on top, then the scrollable move list, and
+                  pinned below it the advantage chart and the navigation buttons. */}
+                  <section
+                    className="h-36 shrink-0 overflow-y-auto border-b border-base-content/10 p-3 lg:h-40"
+                    data-testid="move-box"
+                    aria-label={t("review.selected")}
+                  >
+                    <MoveInsight byNode={reviewState.byNode} />
+                  </section>
+                  <div className="flex h-72 min-h-0 flex-col overflow-hidden lg:h-auto lg:flex-1">
+                    <MoveList byNode={reviewState.byNode} />
+                  </div>
+                  <div className="shrink-0 border-t border-base-content/10 px-2 pt-2 pb-1">
+                    <h2 className="panel-title px-1">{t("graph.title")}</h2>
+                    <EvalGraph byNode={reviewState.byNode} height={72} />
+                  </div>
+                  <div className="hidden border-t border-base-content/10 p-1 lg:block">
+                    <NavControls />
+                  </div>
+                </>
+              )}
+              {tab === "review" && (
+                <>
+                  <GameReport state={reviewState} fen={fen} />
+                  <ExplorerSection fen={fen} live={live} />
+                </>
+              )}
+              {tab === "engine" && <EnginePanel live={live} fen={fen} />}
+            </div>
+          </>
+        )}
       </aside>
 
       {/* Phones and tablets: navigation within thumb reach. */}

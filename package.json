@@ -17,7 +17,7 @@
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "icons": "node scripts/generate-icons.mjs",
     "sounds": "node scripts/generate-sounds.mjs",
-    "bench": "vitest run tests/analysis-speed.test.ts"
+    "bench": "vitest run tests/analysis-bench.test.ts"
   },
   "packageManager": "pnpm@10.33.2",
   "dependencies": {

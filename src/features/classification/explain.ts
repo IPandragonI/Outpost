@@ -3,6 +3,7 @@ import { parseUci, uciLineToSan, type Color } from "@/lib/chess/position";
 import { formatScore, opposite, type Score } from "@/features/engine/evaluation";
 import type { MoveClassification } from "./classify-move";
 import { materialBalance } from "./material";
+import { moveThemes, type ThemeHit } from "./themes";
 import type { MessageKey, Translate } from "@/lib/i18n/translate";
 
 /** "a knight", "two pawns"… in the interface language. */
@@ -45,9 +46,31 @@ function mateWords(t: Translate, score: Score): string | null {
   return t("explain.mateIn", { n: score.moves });
 }
 
+/** The sentence that explains a theme, or null when the existing mate sentences already do. */
+function themeSentence(t: Translate, hit: ThemeHit, change: string): string | null {
+  const piece = t(`theme.piece.${hit.piece ?? "p"}` as MessageKey);
+  const san = hit.san ?? "";
+  switch (hit.theme) {
+    case "hanging":
+      return t("explain.theme.hanging", { piece, square: hit.square ?? "" });
+    case "missed-capture":
+      return t("explain.theme.missedCapture", { san, piece, square: hit.square ?? "" });
+    case "allowed-fork":
+      return t("explain.theme.allowedFork", { san });
+    case "missed-fork":
+      return t("explain.theme.missedFork", { san });
+    case "threw-advantage":
+      return t("explain.theme.threwAdvantage", { change });
+    default:
+      return null;
+  }
+}
+
 export interface Explanation {
   headline: string;
   details: string[];
+  /** Why the move was bad, as named themes (hung piece, missed fork…). Empty for good moves. */
+  themes: ThemeHit[];
   /** SAN of the best move and its line, for display. */
   bestSan: string | null;
   bestLineSan: string[];
@@ -82,6 +105,7 @@ export function explainMove(
       return {
         headline: t("explain.book", { san: played.san }),
         details: [t("explain.bookDetail")],
+        themes: [],
         bestSan,
         bestLineSan,
         replySan,
@@ -90,6 +114,7 @@ export function explainMove(
       return {
         headline: t("explain.forced", { san: played.san }),
         details: [],
+        themes: [],
         bestSan,
         bestLineSan,
         replySan,
@@ -117,13 +142,19 @@ export function explainMove(
     return {
       headline: t(`explain.headline.${result.classification}` as MessageKey, { san: played.san }),
       details,
+      themes: [],
       bestSan,
       bestLineSan,
       replySan,
     };
   }
 
-  // Not the best move: what it changes, then what was better.
+  // Not the best move: the theme behind it first, then what it changes and what was better.
+  const themes = moveThemes(result, fenBefore, playedUci);
+  for (const hit of themes) {
+    const sentence = themeSentence(t, hit, evalChange);
+    if (sentence) details.push(sentence);
+  }
   if (result.flags.includes("allows-mate")) {
     details.push(
       t(replySan.length ? "explain.allowsMateLine" : "explain.allowsMate", {
@@ -140,7 +171,7 @@ export function explainMove(
     );
   } else {
     const lost = -materialSwing(fenAfter, result.replyLine, mover);
-    if (lost >= 1 && replySan[0]) {
+    if (lost >= 1 && replySan[0] && !themes.some((h) => h.theme === "hanging")) {
       details.push(
         t(opponent === "w" ? "explain.whiteWins" : "explain.blackWins", {
           san: replySan[0],
@@ -153,19 +184,13 @@ export function explainMove(
       details.push(t("explain.wouldWin", { san: bestSan, material: materialWords(t, gain) }));
     }
   }
-  if (result.flags.includes("slower-mate")) details.push(t("explain.slowerMate"));
-
-  const percent = Math.round(result.loss * 100);
-  if (percent >= 1) {
-    details.push(t("explain.evalLoss", { change: evalChange, percent }));
-  } else {
-    details.push(t("explain.eval", { change: evalChange }));
-  }
+  if (result.flags.includes("slower-mate")) details.push(t("explain.slowerMate"));  
   if (result.flags.includes("low-confidence")) details.push(t("explain.lowConfidence"));
 
   return {
     headline: t(`explain.headline.${result.classification}` as MessageKey, { san: played.san }),
     details,
+    themes,
     bestSan,
     bestLineSan,
     replySan,

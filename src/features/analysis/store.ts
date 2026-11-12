@@ -24,7 +24,11 @@ import { analysisCache, games } from "@/features/storage/repositories";
 import { parseUci, positionKey, START_FEN, uciOf } from "@/lib/chess/position";
 import { loadOpeningBook } from "@/hooks/useOpeningBook";
 import type { SearchLimits } from "@/features/engine/uci";
-import { ANALYSIS_PRESETS, analyzePositions, planLimits } from "./game-analysis";
+import { useSettings } from "@/features/settings/settings-store";
+import { createCloudEval } from "@/features/engine/cloud-eval";
+import { ANALYSIS_PRESETS, planLimits } from "./game-analysis";
+import { analyzeGame, ANALYSIS_STRATEGY } from "./review-pipeline";
+import { sideOf } from "./perspective";
 
 /**
  * Search limits for each main-line position: book openings shallow (their moves are
@@ -78,6 +82,8 @@ interface AnalysisState {
   /** Deepest result of the live engine per position key, kept while navigating. */
   livePositions: Record<string, PositionAnalysis>;
   run: AnalysisRun;
+  /** The game was opened with analysis results already stored (see loadGame). */
+  restored: boolean;
   saveError: UserMessage | null;
   loadError: UserMessage | null;
   loading: boolean;
@@ -90,6 +96,7 @@ interface AnalysisState {
   first(): void;
   last(): void;
   flip(): void;
+  setOrientation(orientation: "white" | "black"): void;
   returnToMainline(): void;
   /** Plays a move from the current position; returns false when illegal. */
   playMove(move: { from: string; to: string; promotion?: string } | string): boolean;
@@ -110,7 +117,7 @@ interface AnalysisState {
   startGameAnalysis(presetId: string): Promise<void>;
   /** Stops the running analysis; `byUser` marks a stop the user asked for. */
   cancelGameAnalysis(byUser?: boolean): void;
-  restoreGameAnalysis(presetId: string): Promise<void>;
+  restoreGameAnalysis(presetId: string, persisted: "partial" | "complete"): Promise<void>;
   setTitle(title: string): Promise<void>;
   /** Saves an unsaved board to the library. */
   saveAsNew(record: GameRecord): Promise<void>;
@@ -175,6 +182,7 @@ export const useAnalysis = create<AnalysisState>()((set, get) => {
     gamePositions: {},
     livePositions: {},
     run: IDLE_RUN,
+    restored: false,
     saveError: null,
     loadError: null,
     loading: false,
@@ -197,17 +205,27 @@ export const useAnalysis = create<AnalysisState>()((set, get) => {
           pgn: record.pgn,
           tree: record.tree,
           currentId: record.tree.rootId,
+          // The player who analyzes their own game (the saved Chess.com account) is at the
+          // bottom of the board.
+          orientation:
+            sideOf(record.headers, useSettings.getState().chessComUsername) === "b"
+              ? "black"
+              : "white",
           preview: null,
           gamePositions: {},
           livePositions: {},
           run: IDLE_RUN,
+          restored: false,
         });
         // Stored results are looked up before the game is shown as loaded, so the screen
         // can tell "not analyzed" from "analysis found" when it decides to start one.
         if (record.analysis.presetId && record.analysis.state !== "none") {
-          await get().restoreGameAnalysis(record.analysis.presetId);
+          await get().restoreGameAnalysis(
+            record.analysis.presetId,
+            record.analysis.state === "complete" ? "complete" : "partial",
+          );
         }
-        if (get().gameId === id) set({ loading: false });
+        if (get().gameId === id) set({ loading: false, restored: get().run.state !== "idle" });
       } catch (error) {
         set({ loading: false, loadError: storageProblem(error) });
       }
@@ -228,6 +246,7 @@ export const useAnalysis = create<AnalysisState>()((set, get) => {
         gamePositions: {},
         livePositions: {},
         run: IDLE_RUN,
+        restored: false,
         loadError: null,
       });
     },
@@ -256,6 +275,9 @@ export const useAnalysis = create<AnalysisState>()((set, get) => {
       const { preview, tree, currentId } = get();
       if (preview) return get().previewStep(preview.uci.length);
       set({ currentId: lineEnd(tree, currentId) });
+    },
+    setOrientation(orientation) {
+      set({ orientation });
     },
     flip() {
       set((s) => ({ orientation: s.orientation === "white" ? "black" : "white" }));
@@ -388,7 +410,9 @@ export const useAnalysis = create<AnalysisState>()((set, get) => {
       const controller = new AbortController();
       runController = controller;
       const service = getEngineService();
-      const fens = mainline(get().tree).map((n) => n.fen);
+      const line = mainline(get().tree);
+      const fens = line.map((n) => n.fen);
+      const ucis = line.slice(1).map((n) => n.uci ?? "");
       const gameId = get().gameId;
       set({
         run: { state: "running", presetId: preset.id, done: 0, total: fens.length },
@@ -412,42 +436,55 @@ export const useAnalysis = create<AnalysisState>()((set, get) => {
         }
       };
 
-      let done = 0;
+      let analyzed = 0;
       try {
         const plan = await planGame(fens, preset.limits);
         if (runController !== controller) return;
-        await analyzePositions(
+        const results = await analyzeGame(
           fens,
+          ucis,
           (fen, limits, signal, lane) => {
             const handle = service.analyze(fen, limits, { priority: "background", lane });
             signal.addEventListener("abort", handle.cancel);
             return handle.promise;
           },
           {
-            limits: plan,
+            plan,
+            strategy: ANALYSIS_STRATEGY,
             engine: service.engineId,
             cache: analysisCache,
             signal: controller.signal,
             concurrency: service.parallelism,
+            ...(useSettings.getState().cloudEval ? { remote: createCloudEval() } : {}),
             onPosition: (_, analysis) => {
               if (runController !== controller) return;
-              done++;
-              set((s) => ({
-                gamePositions: { ...s.gamePositions, [positionKey(analysis.fen)]: analysis },
-                run: { ...s.run, done },
-              }));
+              analyzed++;
+              set((s) => {
+                const key = positionKey(analysis.fen);
+                const existing = s.gamePositions[key];
+                // A scan result never replaces a deeper one (a cloud evaluation, say).
+                return existing && existing.depth > analysis.depth
+                  ? {}
+                  : { gamePositions: { ...s.gamePositions, [key]: analysis } };
+              });
+            },
+            onProgress: (done, total) => {
+              if (runController !== controller) return;
+              set((s) => ({ run: { ...s.run, done, total } }));
             },
           },
         );
         if (runController !== controller) return;
-        const complete = done === fens.length;
-        set((s) => ({ run: { ...s.run, state: complete ? "done" : "cancelled" } }));
-        await persistStatus(complete ? "complete" : "partial", done);
+        const complete = results.every(Boolean);
+        set((s) => ({
+          run: { ...s.run, state: complete ? "done" : "cancelled", ...(complete ? { done: fens.length } : {}) },
+        }));
+        await persistStatus(complete ? "complete" : "partial", results.filter(Boolean).length);
       } catch (error) {
         if (runController !== controller) return;
         if (isAbortError(error)) {
           set((s) => ({ run: { ...s.run, state: "cancelled" } }));
-          await persistStatus("partial", done);
+          await persistStatus("partial", analyzed);
         } else {
           set((s) => ({
             run: {
@@ -456,7 +493,7 @@ export const useAnalysis = create<AnalysisState>()((set, get) => {
               error: error instanceof Error ? error.message : "The analysis failed.",
             },
           }));
-          if (done) await persistStatus("partial", done);
+          if (analyzed) await persistStatus("partial", analyzed);
         }
       } finally {
         if (runController === controller) runController = null;
@@ -493,24 +530,32 @@ export const useAnalysis = create<AnalysisState>()((set, get) => {
       }
     },
 
-    async restoreGameAnalysis(presetId) {
+    async restoreGameAnalysis(presetId, persisted) {
       const preset = ANALYSIS_PRESETS.find((p) => p.id === presetId);
       if (!preset) return;
       const service = getEngineService();
       const fens = mainline(get().tree).map((n) => n.fen);
       const plan = await planGame(fens, preset.limits);
+      // Moves the scan settled were never searched at the preset's depth: their scan
+      // result counts, when the analysis was completed.
+      const scanDepth = ANALYSIS_STRATEGY.scanDepth || (preset.limits.depth ?? 0);
+      const scanPlan = await planGame(fens, { ...preset.limits, depth: scanDepth });
       const found: Record<string, PositionAnalysis> = {};
+      let deep = 0;
       for (const [i, fen] of fens.entries()) {
-        const cached = await analysisCache.get(fen, service.engineId, plan[i]!);
+        const full = await analysisCache.get(fen, service.engineId, plan[i]!);
+        const cached = full ?? (await analysisCache.get(fen, service.engineId, scanPlan[i]!));
+        if (full) deep++;
         if (cached) found[positionKey(fen)] = cached;
       }
-      const done = fens.filter((fen) => found[positionKey(fen)]).length;
+      const count = fens.filter((fen) => found[positionKey(fen)]).length;
+      const complete = count === fens.length && (persisted === "complete" || deep === fens.length);
       set({
         gamePositions: found,
         run: {
-          state: done === fens.length ? "done" : done ? "cancelled" : "idle",
+          state: complete ? "done" : count ? "cancelled" : "idle",
           presetId,
-          done,
+          done: count,
           total: fens.length,
         },
       });

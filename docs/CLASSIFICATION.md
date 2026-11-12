@@ -29,14 +29,14 @@ Scores become M's winning chances with the logistic curve published by lichess,
 `max(0, W(best) − W(played))`. The curve flattens, so the same centipawn loss weighs much more
 in a balanced position than in a decided one (+0.3 → −2.7 loses about 26 points, +9 → +6 about 6).
 
-| Loss | Label |
-| --- | --- |
-| engine's move, or a score at least as good | Best |
-| ≤ 2% | Excellent |
-| ≤ 5% | Good |
-| ≤ 10% | Inaccuracy |
-| ≤ 20% | Mistake |
-| > 20% | Blunder |
+| Loss                                       | Label      |
+| ------------------------------------------ | ---------- |
+| engine's move, or a score at least as good | Best       |
+| ≤ 2%                                       | Excellent  |
+| ≤ 5%                                       | Good       |
+| ≤ 10%                                      | Inaccuracy |
+| ≤ 20%                                      | Mistake    |
+| > 20%                                      | Blunder    |
 
 The bands follow the thresholds Chess.com describes publicly for its game review. They live in
 `DEFAULT_RULES` and are configurable.
@@ -87,3 +87,59 @@ when the analysis is partial.
 
 To extend the benchmark, add annotated games to `tests/fixtures` with assertions on moves whose
 verdict is unambiguous.
+
+## Phases, estimated level and mistake themes
+
+- **Phases.** Each move belongs to the opening (while the game follows the opening book, and
+  for the first ten moves), the endgame (six pieces or fewer besides pawns and kings) or the
+  middlegame in between; a game never goes back to an earlier phase. Precision is computed
+  per phase over the judged moves (book and forced moves are left out).
+- **Estimated level.** `3100·e^(−0.01·ACPL)`, rounded to 50 and clamped to 400–3000, from the
+  average centipawn loss, with at least eight judged moves. It is a rule of thumb that tells
+  how close the moves were to the engine's, not a rating, and it is shown as such.
+- **Themes** (`src/features/classification/themes.ts`). For inaccuracies, mistakes, misses
+  and blunders, from the engine's lines only: a piece left hanging (static exchange of the
+  best capture, and the engine's reply is that capture), a capture that wins material that
+  was not played, a fork allowed or missed (a move whose piece attacks two or more pieces
+  worth winning, a check counting as one), mate allowed or missed, and a winning advantage
+  thrown away (chances ≥ 70 % before, < 55 % after). Themes are heuristics: a move can have
+  several, or none.
+
+## One analysis, opened on request
+
+A game opened from the library or from Chess.com is analyzed at once, at the preset chosen in
+the settings, and the whole game is analyzed (there is no separate quick pass). While it runs,
+the start screen shows the numbers as they come: the advantage chart, each player's precision
+and the move table. Its button, "Démarrer le bilan", stays disabled until the analysis is
+complete; pressing it only opens the detailed review (the three tabs) from the results already
+computed and starts nothing. Changing the depth on that screen restarts the analysis, reusing
+positions already analyzed at least as deep. A game that already has stored results opens the
+detailed review directly.
+
+## Analysis speed: what was measured
+
+`pnpm bench` (tests/analysis-bench.test.ts) runs the same game with the real engine, 12 cores,
+Standard preset (depth 16, two lines), and compares configurations by time, by nodes searched
+(the engine's work, which does not depend on how busy the machine is) and by agreement of the
+verdicts. Results on the "immortal" fixture:
+
+- **Helper layout (kept).** Whole-game analysis runs on single-thread helper engines, one
+  position each, and the primary engine stays free for the board. Against the older layout (a
+  4-thread primary plus three helpers, all searching): 1.6 times faster (29 s against 46 s;
+  60 s against 100 s on a busy machine) with 2.5 times fewer nodes, and repeatable (two runs
+  gave 45 of 45 identical verdicts, where the older layout agreed with itself on 37 to 41 of
+  45). The two layouts differ on about 6 of 45 verdicts. Their agreement with a depth-20
+  reference could not be measured (the benchmark was stopped for lack of memory).
+- **Shortcuts (kept).** SIMD is present in both Stockfish builds. Engines are loaded ahead of
+  use, a position repeated in a game is searched once, and a position with one legal move is
+  searched to depth 12 at most.
+- **Adaptive depth, second line only where needed, early stop (not enabled).** Measured in
+  nodes against the exact method, early stop halves the work but moves the verdicts well beyond
+  the engine's own run-to-run noise (mean loss difference 1.9 points against 0.5); the selective
+  second line also degrades them; adaptive depth alone saves about 12 % of the nodes on this
+  very tactical game. None passes "faster without lower quality", so the app keeps the exact
+  method (`ANALYSIS_STRATEGY` in review-pipeline.ts). The options stay in the code, off, so they
+  can be measured again on other games.
+- **Lichess opening evaluations (optional).** Off by default; the setting sends the position
+  (FEN only) of the first moves to lichess.org and falls back to the engine on any failure.
+  It was tested with a simulated service, not against the live one.

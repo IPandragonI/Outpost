@@ -53,6 +53,11 @@ export interface Settings {
   engineHashMb: number | null;
   /** Chess.com username whose recent games are offered for import. */
   chessComUsername: string;
+  /**
+   * Ask Lichess's cloud for ready-made evaluations of the opening positions of a game
+   * (sends the positions, not names, to lichess.org). Off by default.
+   */
+  cloudEval: boolean;
   /** Ids of the theory lessons whose exercise was solved. */
   solvedLessons: string[];
 }
@@ -80,6 +85,7 @@ export const DEFAULT_SETTINGS: Settings = {
   engineThreads: null,
   engineHashMb: null,
   chessComUsername: "",
+  cloudEval: false,
   solvedLessons: [],
 };
 

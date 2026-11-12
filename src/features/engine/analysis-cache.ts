@@ -14,10 +14,12 @@ export interface AnalysisCache {
 }
 
 export function satisfies(stored: PositionAnalysis, engine: string, limits: SearchLimits): boolean {
-  if (stored.engine !== engine || !stored.complete) return false;
+  // A cloud evaluation is accepted whatever the local engine: it is deeper than a local one.
+  if ((stored.engine !== engine && stored.source !== "cloud") || !stored.complete) return false;
   if (stored.lines.length === 0) return true; // finished game: nothing more to search
   if (stored.limits.multiPv < limits.multiPv) return false;
-  if (limits.depth && stored.depth < limits.depth) return false;
+  // A forced move or a settled search stands for the depth that was asked.
+  if (limits.depth && (stored.requestedDepth ?? stored.depth) < limits.depth) return false;
   if (!limits.depth && limits.movetimeMs && (stored.limits.movetimeMs ?? 0) < limits.movetimeMs) {
     return stored.limits.depth !== undefined && stored.depth >= 20;
   }

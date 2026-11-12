@@ -11,6 +11,9 @@ import {
 } from "./classification-rules";
 import { classifyMove, type MoveClassification } from "./classify-move";
 
+export type Phase = "opening" | "middlegame" | "endgame";
+export const PHASES: readonly Phase[] = ["opening", "middlegame", "endgame"];
+
 export interface ReviewMove {
   /** Position before the move. */
   fenBefore: string;
@@ -22,6 +25,8 @@ export interface ReviewMove {
 }
 
 export interface ReviewedMove extends ReviewMove {
+  /** Phase of the game the move was played in. */
+  phase: Phase;
   result: MoveClassification;
   /** Precision of this move, 0–100 (see moveAccuracy). */
   accuracy: number;
@@ -35,6 +40,10 @@ export interface PlayerSummary {
   /** Average centipawn loss over non-book, non-forced moves. */
   averageCpLoss: number | null;
   movesReviewed: number;
+  /** Precision within each phase (null when no judged move was played in it). */
+  phases: Record<Phase, { precision: number | null; moves: number }>;
+  /** Rough playing level suggested by the average centipawn loss (see estimateRating). */
+  estimatedRating: number | null;
 }
 
 export interface TurningPoint {
@@ -78,6 +87,40 @@ export function gamePrecision(accuracies: readonly number[]): number | null {
   return (mean + harmonic) / 2;
 }
 
+/** Pieces other than pawns and kings on the board. */
+function piecesOnBoard(fen: string): number {
+  return (fen.split(" ")[0]!.match(/[nbrqNBRQ]/g) ?? []).length;
+}
+
+/**
+ * Phase of each move: the opening lasts while the game follows the opening book or for
+ * the first ten moves, the endgame starts when six pieces or fewer (pawns and kings
+ * aside) remain, and the middlegame is what lies between. A game never goes back to an
+ * earlier phase.
+ */
+export function phasesOf(moves: readonly ReviewMove[]): Phase[] {
+  let current = 0;
+  return moves.map((m) => {
+    let phase = 1;
+    if (piecesOnBoard(m.fenBefore) <= 6) phase = 2;
+    else if (m.isBook || m.ply <= 20) phase = 0;
+    current = Math.max(current, phase);
+    return PHASES[current]!;
+  });
+}
+
+/**
+ * A rough level, in Elo-like points, from the average centipawn loss: 3100·e^(−0.01·ACPL),
+ * a published rule of thumb, rounded to 50. It says how the moves compare with the engine's,
+ * not what the player's rating is: needs at least eight judged moves, and is clamped to
+ * 400–3000.
+ */
+export function estimateRating(averageCpLoss: number | null, judgedMoves: number): number | null {
+  if (averageCpLoss === null || judgedMoves < 8) return null;
+  const rating = 3100 * Math.exp(-0.01 * averageCpLoss);
+  return Math.round(Math.max(400, Math.min(3000, rating)) / 50) * 50;
+}
+
 function emptyCounts(): Record<Classification, number> {
   return Object.fromEntries(CLASSIFICATIONS.map((c) => [c, 0])) as Record<Classification, number>;
 }
@@ -94,6 +137,7 @@ export function reviewGame(
 ): GameReview {
   const reviewed: ReviewedMove[] = [];
   let pending = 0;
+  const phases = phasesOf(moves);
   let previous: { loss: number; uci: string; fenBefore: string } | null = null;
 
   moves.forEach((move, i) => {
@@ -124,7 +168,7 @@ export function reviewGame(
       },
       rules,
     );
-    reviewed.push({ ...move, result, accuracy: moveAccuracy(result.loss) });
+    reviewed.push({ ...move, phase: phases[i]!, result, accuracy: moveAccuracy(result.loss) });
     // Theory and forced moves are not errors that create a chance for the opponent (and
     // book positions are searched shallowly, see planLimits).
     const notJudged = result.classification === "book" || result.classification === "forced";
@@ -138,14 +182,26 @@ export function reviewGame(
     const judged = own.filter(
       (m) => m.result.classification !== "book" && m.result.classification !== "forced",
     );
+    const averageCpLoss = judged.length
+      ? judged.reduce((sum, m) => sum + m.result.cpLoss, 0) / judged.length
+      : null;
+    const byPhase = Object.fromEntries(
+      PHASES.map((phase) => {
+        const inPhase = judged.filter((m) => m.phase === phase);
+        return [
+          phase,
+          { precision: gamePrecision(inPhase.map((m) => m.accuracy)), moves: inPhase.length },
+        ];
+      }),
+    ) as PlayerSummary["phases"];
     return {
       color,
       counts,
       precision: gamePrecision(judged.map((m) => m.accuracy)),
-      averageCpLoss: judged.length
-        ? judged.reduce((sum, m) => sum + m.result.cpLoss, 0) / judged.length
-        : null,
+      averageCpLoss,
       movesReviewed: own.length,
+      phases: byPhase,
+      estimatedRating: estimateRating(averageCpLoss, judged.length),
     };
   };
 

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAnalysis } from "@/features/analysis/store";
+import { getEngineService } from "@/features/engine/browser-engine";
 import { useSettings } from "@/features/settings/settings-store";
 import { isValidFen } from "@/lib/chess/position";
 import { AnalysisWorkspace } from "./AnalysisWorkspace";
@@ -28,6 +29,9 @@ export function AnalysisPage() {
 
   useEffect(() => {
     const store = useAnalysis.getState();
+    // Load the engines while the game is read: the helpers of a whole-game analysis are
+    // ready when it starts.
+    if (gameParam) getEngineService().warmUp(8);
     if (gameParam) {
       void store.loadGame(gameParam).then(() => {
         if (!rerunParam) return;

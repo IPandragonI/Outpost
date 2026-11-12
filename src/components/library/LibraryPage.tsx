@@ -7,6 +7,7 @@ import { describeStorageError } from "@/features/storage/database";
 import { games } from "@/features/storage/repositories";
 import { GameLibrary } from "./GameLibrary";
 import { ImportPanel } from "./ImportPanel";
+import { getEngineService } from "@/features/engine/browser-engine";
 import { useT } from "@/lib/i18n/useT";
 
 export function LibraryPage() {
@@ -28,6 +29,11 @@ export function LibraryPage() {
   }, [t]);
 
   useEffect(refresh, [refresh]);
+
+  // Load the main engine while the user browses their games.
+  useEffect(() => {
+    getEngineService().warmUp(0);
+  }, []);
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-3 py-4 sm:px-4 sm:py-6">
