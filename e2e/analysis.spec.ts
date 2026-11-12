@@ -35,15 +35,24 @@ test("import, analyze, review a blunder, explore theory, and keep everything aft
   // The button only opens the review: no analysis starts again.
   await startButton.click();
 
-  // The three tabs appear; Game Review is the first and is selected.
+  // The three tabs appear (Game Review first); the Moves tab is selected and the first move
+  // has been played by itself.
   const tabs = page.getByRole("tab");
   await expect(tabs.nth(0)).toHaveText(/Bilan/);
   await expect(tabs.nth(1)).toHaveText("Coups");
   await expect(tabs.nth(2)).toHaveText("Moteur");
-  await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
+  await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("move-list").locator('[aria-current="step"]')).toHaveText("e4");
   await expect(page.getByRole("tab", { name: "Ouvertures" })).toHaveCount(0);
 
   // 4. The review is already complete: no progress controls, just a button to run it again.
+  await page.getByRole("tab", { name: /Bilan/ }).click();
+  // The debrief closes the report.
+  const report = page.getByTestId("game-report");
+  await expect(report.getByTestId("debrief")).toBeVisible();
+  expect(await report.evaluate((el) => el.lastElementChild?.getAttribute("data-testid"))).toBe(
+    "debrief",
+  );
   await expect(page.getByRole("button", { name: "Relancer l’analyse" })).toBeVisible();
   await expect(page.getByTestId("analysis-runner")).toHaveCount(0);
   // The advantage chart lives in the Moves tab.
@@ -52,7 +61,6 @@ test("import, analyze, review a blunder, explore theory, and keep everything aft
   await page.getByRole("tab", { name: /Bilan/ }).click();
 
   // 5. Classifications appear, with each player's precision.
-  const report = page.getByTestId("game-report");
   await expect(report.getByText("Précision").first()).toBeVisible();
   await expect(report.getByRole("row", { name: /Théorie/ })).toBeVisible();
   // Precision by phase and the estimated level are part of the review.

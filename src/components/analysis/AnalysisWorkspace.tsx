@@ -298,7 +298,7 @@ function Toolbar() {
   };
 
   return (
-    <div className="flex min-h-10 flex-wrap items-center gap-2">
+    <div className="flex min-h-9 flex-wrap items-center gap-2">
       {editing ? (
         <form
           className="flex flex-1 items-center gap-1"
@@ -570,11 +570,11 @@ export function AnalysisWorkspace() {
     // exactly one viewport tall: the board on the left, and one tabbed panel on the right
     // (moves, review, engine) whose content scrolls inside it. Every cell has `min-h-0`, so
     // a long list can never stretch the page.
-    <div className="mx-auto grid w-full max-w-[1900px] gap-3 px-2 pt-2 pb-24 sm:px-3 lg:h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(360px,400px)] lg:p-3 xl:grid-cols-[minmax(0,1fr)_minmax(400px,400px)]">
+    <div className="mx-auto grid w-full max-w-[1900px] gap-3 px-2 pt-2 pb-24 sm:px-3 lg:h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(320px,360px)] lg:p-2 xl:grid-cols-[minmax(0,1fr)_minmax(360px,380px)]">
       {/* Board */}
       <section className="flex min-h-0 min-w-0 flex-col gap-2" aria-label="Board">
         <Toolbar />
-        <div className="mx-auto flex w-full flex-col gap-1 lg:max-w-[min(100%,calc(100dvh-9.5rem))]">
+        <div className="mx-auto flex w-full flex-col gap-1 lg:max-w-[min(100%,calc(100dvh-8rem))]">
           <PlayerBar color={topColor} captured={captured} position="top" />
           <div className="flex gap-2">
             <div className="hidden sm:flex">
@@ -610,7 +610,17 @@ export function AnalysisWorkspace() {
           </div>
         )}
         {!started ? (
-          <ReviewStartPanel state={reviewState} onStart={() => setRevealed(gameKey)} />
+          <ReviewStartPanel
+            state={reviewState}
+            onStart={() => {
+              // Open the review on the moves, and play the first move by itself.
+              setRevealed(gameKey);
+              setTab("moves");
+              const store = useAnalysis.getState();
+              store.first();
+              store.next();
+            }}
+          />
         ) : (
           <>
             <Tabs tabs={tabs} active={tab} onChange={setTab} />

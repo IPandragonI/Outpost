@@ -31,8 +31,11 @@ test("phone: import a game, navigate with large controls, switch panels without 
   const startButton = page.getByRole("button", { name: "Démarrer le bilan" });
   await expect(startButton).toBeEnabled({ timeout: 180_000 });
   await startButton.tap();
-  await page.getByRole("tab", { name: "Coups" }).tap();
+  // Starting the review opens the moves and plays the first move.
+  await expect(page.getByRole("tab", { name: "Coups" })).toHaveAttribute("aria-selected", "true");
   const moves = page.getByTestId("move-list");
+  await expect(moves.locator('[aria-current="step"]')).toHaveText("e4");
+  for (let i = 0; i < 5; i++) await next.tap();
   await expect(moves.locator('[aria-current="step"]')).toHaveText("Qh4+");
 
   // Switching panels keeps the position.

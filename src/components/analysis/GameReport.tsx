@@ -597,7 +597,6 @@ function GameReportImpl({ state, fen }: { state: GameReviewState; fen: string })
               {t("report.pending", { n: review.pending })}
             </p>
           )}
-          <Debrief review={review} />
           <PlayersSummary review={review} />
 
           <table className="table table-xs" data-testid="phase-precision">
@@ -755,6 +754,9 @@ function GameReportImpl({ state, fen }: { state: GameReviewState; fen: string })
           )}
 
           <p className="text-xs leading-5 text-base-content/50">{t("report.disclaimer")}</p>
+
+          {/* The debrief closes the report. */}
+          <Debrief review={review} />
         </>
       )}
     </section>
