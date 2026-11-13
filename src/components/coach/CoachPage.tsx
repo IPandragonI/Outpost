@@ -12,10 +12,19 @@ import {
   YAxis,
 } from "recharts";
 import { ShieldCheck, TrendingDown, TrendingUp } from "lucide-react";
+import { HistoryCard, StyleCard, timeClassName, type SyncState } from "./CoachExtras";
 import { ClassificationBadge } from "@/components/analysis/ClassificationBadge";
 import type { Classification } from "@/features/classification/classification-rules";
 import { PHASES } from "@/features/classification/game-review";
+import { ChessComError } from "@/features/chesscom/chesscom";
+import {
+  fetchHistory,
+  loadHistory,
+  saveHistory,
+  type ChessComHistory,
+} from "@/features/chesscom/history";
 import { useSettings } from "@/features/settings/settings-store";
+import { summarizeHistory } from "@/features/stats/behavior";
 import { loadProfileGames } from "@/features/stats/load-profile";
 import {
   buildProfile,
@@ -29,6 +38,7 @@ import {
 } from "@/features/stats/profile";
 import type { MessageKey } from "@/lib/i18n/messages";
 import type { Translate } from "@/lib/i18n/translate";
+import { useOnline } from "@/hooks/useOnline";
 import { useT } from "@/lib/i18n/useT";
 
 const percent = (value: number) => Math.round(value * 100);
@@ -126,6 +136,18 @@ function ScoreLine({ label, tally }: { label: string; tally: Tally }) {
 function LevelCard({ profile }: { profile: Profile }) {
   const t = useT();
   const { level, actualRating } = profile;
+  const anchor = level.anchor;
+  const anchorLine = anchor
+    ? t(
+        anchor.source === "profile"
+          ? "coach.level.anchored"
+          : anchor.source === "games"
+            ? "coach.level.anchoredGames"
+            : "coach.level.anchoredHeaders",
+        { tc: anchor.timeClass ? timeClassName(t, anchor.timeClass) : "", n: anchor.rating },
+      )
+    : t("coach.level.unanchored");
+  const selection = level.selection;
   return (
     <Card title={t("coach.level.title")}>
       {level.estimate === null ? (
@@ -160,12 +182,12 @@ function LevelCard({ profile }: { profile: Profile }) {
               })}
             </p>
           )}
-          {level.provisional && (
-            <p className="text-xs text-warning">{t("coach.level.provisional")}</p>
-          )}
-          {actualRating.recent !== null && (
+          <p className="text-sm text-base-content/80" data-testid="level-anchor">
+            {anchorLine}
+          </p>
+          {level.moves !== null && (
             <p className="text-sm text-base-content/80">
-              {t("coach.level.actual", { n: actualRating.recent })}
+              {t("coach.level.moves", { n: level.moves })}
               {actualRating.delta !== null && Math.abs(actualRating.delta) >= 50 && (
                 <>
                   {" "}
@@ -176,7 +198,37 @@ function LevelCard({ profile }: { profile: Profile }) {
               )}
             </p>
           )}
+          {anchor?.performance != null && (
+            <p className="text-sm text-base-content/80">
+              {t("coach.level.performance", { n: anchor.performance })}
+            </p>
+          )}
+          <p className="text-xs text-base-content/60">
+            {t(`coach.level.reliability.${level.reliability}` as MessageKey)}
+          </p>
+          {level.provisional && (
+            <p className="text-xs text-warning">{t("coach.level.provisional")}</p>
+          )}
         </>
+      )}
+      {selection?.biased &&
+        selection.analyzed.score !== null &&
+        selection.overall.score !== null && (
+          <p className="alert alert-soft py-2 text-sm alert-warning" data-testid="selection-bias">
+            {t("coach.level.biased", {
+              a: percent(selection.analyzed.score),
+              b: percent(selection.overall.score),
+            })}
+          </p>
+        )}
+      {selection && selection.missing.length > 0 && (
+        <p className="text-xs text-base-content/65">
+          {t("coach.level.missing", {
+            outcomes: selection.missing
+              .map((o) => t(`coach.outcome.${o}` as MessageKey))
+              .join(", "),
+          })}
+        </p>
       )}
       <p className="text-xs leading-5 text-base-content/55">{t("coach.level.hint")}</p>
     </Card>
@@ -457,18 +509,24 @@ function UsernameForm({ initial, onSave }: { initial: string; onSave(name: strin
 }
 
 /**
- * The player's profile, built from the analyses stored on this device: an estimated level,
- * results, accuracy by phase, move quality, recurring mistakes, strengths and weaknesses,
- * and how each opening went. Which side of a game is the player's comes from the saved
- * username (the Chess.com account).
+ * The player's coach page, built from the analyses stored on this device and, optionally,
+ * their whole Chess.com history: an estimated level anchored to their real rating, results,
+ * accuracy by phase, move quality, recurring mistakes, playing style and habits, strengths
+ * and weaknesses, and how each opening went. Which side of a game is the player's comes from
+ * the saved username (the Chess.com account).
  */
 export function CoachPage() {
   const t = useT();
+  const online = useOnline();
   const username = useSettings((s) => s.chessComUsername);
   const hydrated = useSettings((s) => s.hydrated);
   const setSettings = useSettings((s) => s.set);
   const [loaded, setLoaded] = useState<{ username: string; games: ProfileGame[] } | null>(null);
+  const [stored, setStored] = useState<{ username: string; value: ChessComHistory | null } | null>(
+    null,
+  );
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [sync, setSync] = useState<SyncState>({ status: "idle" });
   const [editing, setEditing] = useState(false);
   const name = username.trim();
 
@@ -480,14 +538,41 @@ export function CoachPage() {
     }).then((games) => {
       if (!cancelled) setLoaded({ username: name, games });
     });
+    void loadHistory(name).then((value) => {
+      if (!cancelled) setStored({ username: name, value });
+    });
     return () => {
       cancelled = true;
     };
   }, [hydrated, name]);
 
+  const syncHistory = async () => {
+    setSync({ status: "loading", done: 0, total: 0 });
+    try {
+      const history = await fetchHistory(name, {
+        onProgress: (done, total) => setSync({ status: "loading", done, total }),
+      });
+      await saveHistory(history);
+      setStored({ username: name, value: history });
+      setSync({ status: "idle" });
+    } catch (error) {
+      setSync({
+        status: "error",
+        message:
+          error instanceof ChessComError
+            ? t(`chesscom.error.${error.code}` as MessageKey)
+            : t("chesscom.error.unexpected"),
+      });
+    }
+  };
+
   const ready = loaded !== null && loaded.username === name;
+  const history = stored !== null && stored.username === name ? stored.value : null;
   const loading = hydrated && Boolean(name) && !ready;
-  const profile = useMemo(() => (ready ? buildProfile(loaded.games) : null), [ready, loaded]);
+  const profile = useMemo(
+    () => (ready ? buildProfile(loaded.games, history) : null),
+    [ready, loaded, history],
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-3 py-4 sm:px-4 sm:py-6">
@@ -527,6 +612,17 @@ export function CoachPage() {
         </p>
       )}
 
+      {name && !editing && hydrated && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <HistoryCard
+            history={profile?.history ?? (history ? summarizeHistory(history) : null)}
+            sync={sync}
+            online={online}
+            onSync={() => void syncHistory()}
+          />
+        </div>
+      )}
+
       {profile && profile.games === 0 && (
         <div
           className="panel flex flex-col items-start gap-3 p-4 text-sm"
@@ -545,6 +641,7 @@ export function CoachPage() {
           <ResultsCard profile={profile} />
           <AccuracyCard profile={profile} />
           <QualityCard profile={profile} />
+          <StyleCard style={profile.style} behavior={profile.behavior} />
           <InsightsCard profile={profile} />
           <Card title={t("coach.openings.title")} className="md:col-span-2">
             <div className="grid gap-4 lg:grid-cols-2">

@@ -94,9 +94,15 @@ verdict is unambiguous.
   for the first ten moves), the endgame (six pieces or fewer besides pawns and kings) or the
   middlegame in between; a game never goes back to an earlier phase. Precision is computed
   per phase over the judged moves (book and forced moves are left out).
-- **Estimated level.** `3100·e^(−0.01·ACPL)`, rounded to 50 and clamped to 400–3000, from the
-  average centipawn loss, with at least eight judged moves. It is a rule of thumb that tells
-  how close the moves were to the engine's, not a rating, and it is shown as such.
+- **Estimated level of a game.** From the moves played while the position was still open (the
+  mover's winning chances between 10 % and 90 % with the best move) and from four measures of
+  them: the rate of mistakes, blunders and missed chances, the average centipawn loss, the
+  precision and the rate of outright blunders, each mapped to a level by indicative steps and
+  averaged (`src/features/classification/rating-model.ts`). Rounded to 50 in the game review.
+  It replaced `3100·e^(−0.01·ACPL)` over every move, which read a 600-rated player as ~1500:
+  after a blunder the game is decided, and in a decided position a further blunder costs next
+  to nothing on a saturating scale, so the long tail of such games diluted the average. The
+  steps are rules of thumb, not fitted on a licensed dataset.
 - **Themes** (`src/features/classification/themes.ts`). For inaccuracies, mistakes, misses
   and blunders, from the engine's lines only: a piece left hanging (static exchange of the
   best capture, and the engine's reply is that capture), a capture that wins material that
@@ -146,25 +152,47 @@ verdicts. Results on the "immortal" fixture:
 
 ## The coach page ("Coach" tab)
 
-The coach page (`/coach`) is built on the device from the games that were analyzed to the end. Which
-side of a game is the player's comes from the saved username (the Chess.com account, or any
-name typed on the page), compared without case with the PGN's White and Black.
+The coach page (`/coach`) is built on the device from the games that were analyzed to the end,
+and, optionally, from the player's whole Chess.com history. Which side of a game is the player's
+comes from the saved username (the Chess.com account, or any name typed on the page), compared
+without case with the PGN's White and Black.
 
-- **Digest per game.** When an analysis completes, a compact digest (`GameSummary`: precision,
-  average centipawn loss, move counts by classification, precision by phase, mistake themes,
-  for both sides) is stored with the game, so the profile never rereads positions. Games
-  analyzed before that are summarized once from the engine cache and the digest is saved.
-- **Estimated level.** The median of the per-game estimates (see "estimated level" above) over
-  the latest 20 analyzed games, rounded to 10, with the quartiles as a range and a trend (the
-  median of the latest 5 games against the 5 before, from 10 games on). Under 5 games it is
-  shown as provisional. It is set beside the rating found in the games' headers when there is
-  one. It is a rule of thumb from how close the moves were to the engine's, not a rating.
-- **Statistics.** Results by colour and by time control (Chess.com's classes, from the
-  `TimeControl` header: under 3 minutes bullet, under 10 blitz, under an hour rapid), precision
+- **Digest per game.** When an analysis completes, a compact digest (`GameSummary`, version 2) is
+  stored with the game: precision, average centipawn loss, move counts by classification,
+  precision by phase, mistake themes, the moves played in open positions, style features (captures,
+  checks, early queen, castling, book moves, endgame reached), time pressure (moves played with
+  little time left, when the PGN has clocks) and the swings of the game, for both sides. Games
+  analyzed before are summarized once from the engine cache.
+- **Estimated level** (`features/stats/level.ts`). Two kinds of evidence are combined like two
+  measurements with their uncertainty. The moves' evidence (the rating model above, with the moves
+  of all the games pooled, each game weighted, less a penalty for very uneven phases and for a lot
+  of time trouble) has an uncertainty that includes the scale's own (±250). The anchor is the
+  Chess.com rating of the time class played most lately (±100 with 30 recent rated games), or the
+  rating of the latest games, or the ratings written in the games' headers. The estimate is their
+  precision-weighted mean, so the rating anchors it and the moves nudge it by what they deserve. A
+  600-rated player whose moves read as ~1500 comes out near 700. Without any rating the moves
+  speak alone and the page says the estimate is not anchored. An 80 % range, a trend (latest 5
+  games against the 5 before, from 10 games on) and a reliability level are given.
+- **Selection bias.** Analyzed games are not a fair sample (people analyze their wins, or their
+  losses). With the history, the analyzed games are weighted so that their wins, draws and losses
+  match the player's real record over the latest year (inverse-probability weighting on the
+  result). Outcomes with no analyzed game cannot be corrected: they are named, and the moves'
+  evidence is made less certain (×1.35 when the sample is clearly unrepresentative).
+- **Chess.com history** (`features/chesscom/history.ts`). Read on request from the public
+  archives (36 months, 4000 games at most) and stats: one small entry per game (date, time class,
+  colour, result, ratings), kept on the device. Only the username is sent to api.chess.com.
+- **Playing style** (`features/stats/style.ts`). Five scores from 0 to 100 (aggressive and
+  tactical, positional and solid, chaotic, endgame-minded, theory-driven) built from captures and
+  checks per 100 moves, game length, swings per game, brilliant and great moves, blunders in open
+  positions, games reaching the endgame and book moves, each compared with rough club norms; the
+  top one is the style when it reaches 58, otherwise "balanced". Habits are read from the same
+  games: fading or finishing strong, time trouble and how errors rise under it, early castling, a
+  king left in the centre, an early queen.
+- **Habits over all the games** (`features/stats/behavior.ts`, needs the history): the score right
+  after a loss against the overall score (a drop of 10 points or more over 15 games or more is
+  flagged), and the best and worst part of the day (10 games or more in each).
+- **Other statistics.** Results by colour and by time control (Chess.com's classes), precision
   overall, by phase and in won and lost games, move classes per 100 moves, recurring mistake
-  themes per game, openings by family (the part of the name before ":") for each colour with
-  results and precision in the opening phase, and the precision of the latest 40 games.
-- **Strengths and weaknesses.** Plain rules over those numbers, with a minimum of 3 games for
-  any comparison: the weakest and strongest phase (3 points apart), the most frequent mistake
-  theme, a colour scoring 15 points worse, the best and worst time control and opening
-  (15 points apart), brilliant and great moves per 100 moves, blunders and misses per 100 moves.
+  themes per game, openings by family with results and precision in the opening phase, the
+  precision of the latest 40 games, and strengths and weaknesses from plain rules over these
+  numbers (a minimum of 3 games for any comparison).

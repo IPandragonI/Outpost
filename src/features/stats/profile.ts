@@ -4,6 +4,10 @@ import {
 } from "@/features/classification/classification-rules";
 import { PHASES, type Phase } from "@/features/classification/game-review";
 import type { Theme } from "@/features/classification/themes";
+import type { ChessComHistory } from "@/features/chesscom/history";
+import { behaviorOf, summarizeHistory, type Behavior, type HistorySummary } from "./behavior";
+import { estimateLevel, gameRating, type LevelEstimate } from "./level";
+import { styleOf, type StyleProfile } from "./style";
 import type { PlayerGameStats } from "./summary";
 
 export type Outcome = "win" | "loss" | "draw";
@@ -66,18 +70,13 @@ export interface Profile {
   /** Counts of each classification per 100 of the player's moves. */
   per100: Record<Classification, number>;
   themes: { theme: Theme; total: number; perGame: number }[];
-  level: {
-    /** Median of the estimates of the latest games, null without any. */
-    estimate: number | null;
-    /** Quartiles of those estimates. */
-    low: number | null;
-    high: number | null;
-    games: number;
-    /** Points gained (positive) or lost over the latest 5 games, null under 10 games. */
-    trend: number | null;
-    provisional: boolean;
-  };
+  level: LevelEstimate;
+  /** The player's rating found in the games or their Chess.com stats, and how the moves compare. */
   actualRating: { recent: number | null; delta: number | null };
+  style: StyleProfile | null;
+  /** How the player does over all their Chess.com games (needs the history). */
+  behavior: Behavior | null;
+  history: HistorySummary | null;
   openings: Record<Side, OpeningRow[]>;
   /** Oldest first, at most the latest 40 games. */
   series: { date: number; precision: number | null; estimate: number | null }[];
@@ -165,32 +164,6 @@ function tally(games: readonly ProfileGame[]): Tally {
 }
 
 const MIN_GAMES = 3;
-const LEVEL_WINDOW = 20;
-
-function levelOf(games: readonly ProfileGame[]): Profile["level"] {
-  // Newest first.
-  const estimates = [...games]
-    .sort((a, b) => b.date - a.date)
-    .map((g) => g.stats.estimatedRating)
-    .filter((v): v is number => v !== null);
-  const recent = estimates.slice(0, LEVEL_WINDOW);
-  const estimate = quantile(recent, 0.5);
-  const trend =
-    estimates.length >= 10
-      ? Math.round(
-          (quantile(estimates.slice(0, 5), 0.5)! - quantile(estimates.slice(5, 10), 0.5)!) / 10,
-        ) * 10
-      : null;
-  return {
-    estimate: estimate === null ? null : Math.round(estimate / 10) * 10,
-    low: quantile(recent, 0.25) === null ? null : Math.round(quantile(recent, 0.25)! / 10) * 10,
-    high: quantile(recent, 0.75) === null ? null : Math.round(quantile(recent, 0.75)! / 10) * 10,
-    games: recent.length,
-    trend,
-    provisional: recent.length < 5,
-  };
-}
-
 function openingRows(games: readonly ProfileGame[]): OpeningRow[] {
   const groups = new Map<string, ProfileGame[]>();
   for (const g of games) {
@@ -312,7 +285,11 @@ function insightsOf(profile: Omit<Profile, "insights">): Insight[] {
 }
 
 /** The profile of a player from their analyzed games. */
-export function buildProfile(games: readonly ProfileGame[]): Profile {
+export function buildProfile(
+  games: readonly ProfileGame[],
+  history: ChessComHistory | null = null,
+  now = Date.now(),
+): Profile {
   const finished = games.filter((g) => g.outcome !== null);
   const moves = sum(games.map((g) => g.stats.moves));
   const per100 = Object.fromEntries(
@@ -341,15 +318,7 @@ export function buildProfile(games: readonly ProfileGame[]): Profile {
 
   const timeClasses = [...new Set(games.map((g) => g.timeClass))];
   const chronological = [...games].sort((a, b) => a.date - b.date);
-  const latestRatings = [...games]
-    .sort((a, b) => b.date - a.date)
-    .map((g) => g.ownRating)
-    .filter((r): r is number => r !== null)
-    .slice(0, 10);
-  const level = levelOf(games);
-  const recent = latestRatings.length
-    ? Math.round(sum(latestRatings) / latestRatings.length)
-    : null;
+  const level = estimateLevel(games, history, now);
 
   const partial: Omit<Profile, "insights"> = {
     games: games.length,
@@ -372,9 +341,12 @@ export function buildProfile(games: readonly ProfileGame[]): Profile {
     themes,
     level,
     actualRating: {
-      recent,
-      delta: recent !== null && level.estimate !== null ? level.estimate - recent : null,
+      recent: level.anchor?.rating ?? null,
+      delta: level.anchor && level.moves !== null ? level.moves - level.anchor.rating : null,
     },
+    style: styleOf(games),
+    behavior: behaviorOf(history),
+    history: history ? summarizeHistory(history) : null,
     openings: {
       w: openingRows(games.filter((g) => g.side === "w")),
       b: openingRows(games.filter((g) => g.side === "b")),
@@ -382,7 +354,7 @@ export function buildProfile(games: readonly ProfileGame[]): Profile {
     series: chronological.slice(-40).map((g) => ({
       date: g.date,
       precision: g.stats.precision,
-      estimate: g.stats.estimatedRating,
+      estimate: gameRating(g.stats),
     })),
   };
   return { ...partial, insights: insightsOf(partial) };

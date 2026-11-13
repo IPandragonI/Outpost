@@ -26,7 +26,7 @@ export async function summarizeFromCache(record: GameRecord): Promise<GameSummar
     positions.push(await analysisCache.get(fen, ENGINE_NAME, plan[i]!));
   }
   const book = await loadOpeningBook().catch(() => null);
-  return buildSummary(line, positions, book);
+  return buildSummary(line, positions, book, { timeControl: record.headers.TimeControl });
 }
 
 const rating = (value: string | undefined): number | null => {

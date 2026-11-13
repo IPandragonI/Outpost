@@ -475,7 +475,9 @@ export const useAnalysis = create<AnalysisState>()((set, get) => {
         if (complete && gameId) {
           // Keep the digest the profile is built from (see features/stats).
           const book = await loadOpeningBook().catch(() => null);
-          const summary = buildSummary(line, results, book);
+          const summary = buildSummary(line, results, book, {
+            timeControl: get().headers.TimeControl,
+          });
           if (summary) await games.saveSummary(gameId, summary).catch(() => undefined);
         }
       } catch (error) {

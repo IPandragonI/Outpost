@@ -5,7 +5,7 @@
  * imported PGN. No credentials, no Chess.com data beyond the public game archives.
  */
 
-const API = "https://api.chess.com/pub/player";
+export const API = "https://api.chess.com/pub/player";
 
 export type ChessComErrorCode =
   "invalid-username" | "not-found" | "rate-limited" | "network" | "unexpected";
@@ -59,7 +59,11 @@ export function isValidUsername(username: string): boolean {
   return USERNAME.test(username.trim());
 }
 
-async function getJson<T>(fetcher: typeof fetch, url: string, signal?: AbortSignal): Promise<T> {
+export async function getJson<T>(
+  fetcher: typeof fetch,
+  url: string,
+  signal?: AbortSignal,
+): Promise<T> {
   let response: Response;
   try {
     response = await fetcher(url, { signal, headers: { Accept: "application/json" } });

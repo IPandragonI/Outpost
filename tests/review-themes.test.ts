@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { estimateRating, phasesOf, type ReviewMove } from "@/features/classification/game-review";
+import { phasesOf, type ReviewMove } from "@/features/classification/game-review";
 import { moveThemes } from "@/features/classification/themes";
 import type { MoveClassification } from "@/features/classification/classify-move";
 import { START_FEN } from "@/lib/chess/position";
@@ -18,22 +18,6 @@ describe("phasesOf", () => {
     const endgame = "4k3/pppp4/8/8/8/8/PPPP4/R3K2R w - - 0 40";
     const phases = phasesOf([move(40, endgame), move(41, START_FEN)]);
     expect(phases).toEqual(["endgame", "endgame"]);
-  });
-});
-
-describe("estimateRating", () => {
-  it("is null without enough judged moves", () => {
-    expect(estimateRating(20, 5)).toBeNull();
-    expect(estimateRating(null, 30)).toBeNull();
-  });
-
-  it("falls as the average centipawn loss grows, rounded to 50 and clamped", () => {
-    const good = estimateRating(30, 30)!;
-    const poor = estimateRating(120, 30)!;
-    expect(good).toBeGreaterThan(poor);
-    expect(good % 50).toBe(0);
-    expect(estimateRating(0, 30)).toBe(3000);
-    expect(estimateRating(900, 30)).toBe(400);
   });
 });
 

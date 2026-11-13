@@ -28,6 +28,19 @@ function stats(over: Partial<PlayerGameStats> = {}): PlayerGameStats {
       endgame: { precision: 70, moves: 10 },
     },
     themes: {},
+    alive: { moves: 30, acpl: 62, precision: 75, mistakes: 1, blunders: 1 },
+    style: {
+      moves: 40,
+      captures: 9,
+      checks: 2,
+      pawnMoves: 14,
+      queenEarly: false,
+      castleMove: 8,
+      bookMoves: 5,
+      endgame: true,
+    },
+    timePressure: null,
+    turningPoints: 1,
     ...over,
   };
 }
@@ -129,21 +142,26 @@ describe("buildProfile", () => {
     expect(profile.per100.brilliant).toBe(2);
   });
 
-  it("estimates the level from the median of the latest games, with a trend", () => {
-    const rated = (rating: number | null) =>
-      game({ stats: stats({ estimatedRating: rating }), ownRating: 1400 });
-    // Ten older games at 1400, then five recent ones at 1600: the trend is the difference.
-    const games = [
-      ...Array.from({ length: 10 }, () => rated(1400)),
-      ...Array.from({ length: 5 }, () => rated(1600)),
-    ];
-    const profile = buildProfile(games);
-    expect(profile.level.games).toBe(15);
-    expect(profile.level.estimate).toBe(1400);
-    expect(profile.level.trend).toBe(200);
+  it("estimates the level from the moves alone without Chess.com data", () => {
+    const club = { moves: 60, acpl: 62, precision: 75, mistakes: 2, blunders: 2 };
+    const profile = buildProfile(
+      Array.from({ length: 6 }, () => game({ stats: stats({ alive: club }) })),
+    );
+    expect(profile.level.method).toBe("moves");
+    expect(profile.level.estimate).toBeGreaterThan(1350);
+    expect(profile.level.estimate).toBeLessThan(1650);
+    expect(profile.level.anchor).toBeNull();
     expect(profile.level.provisional).toBe(false);
-    expect(profile.actualRating.recent).toBe(1400);
-    expect(profile.actualRating.delta).toBe(0);
+  });
+
+  it("reads a trend from the latest games against the ones before", () => {
+    const weak = { moves: 60, acpl: 130, precision: 58, mistakes: 6, blunders: 5 };
+    const strong = { moves: 60, acpl: 45, precision: 80, mistakes: 1, blunders: 1 };
+    const games = [
+      ...Array.from({ length: 5 }, () => game({ stats: stats({ alive: weak }) })),
+      ...Array.from({ length: 5 }, () => game({ stats: stats({ alive: strong }) })),
+    ];
+    expect(buildProfile(games).level.trend).toBeGreaterThan(300);
   });
 
   it("is provisional with few games and has no trend", () => {
@@ -152,10 +170,18 @@ describe("buildProfile", () => {
     expect(profile.level.trend).toBeNull();
   });
 
-  it("has no level without estimates", () => {
-    const profile = buildProfile([game({ stats: stats({ estimatedRating: null }) })]);
+  it("has no level without moves played in open positions", () => {
+    const empty = { moves: 0, acpl: null, precision: null, mistakes: 0, blunders: 0 };
+    const profile = buildProfile([game({ stats: stats({ alive: empty }) })]);
     expect(profile.level.estimate).toBeNull();
+    expect(profile.level.method).toBe("none");
     expect(profile.actualRating.delta).toBeNull();
+  });
+
+  it("falls back on the ratings in the game headers as an anchor", () => {
+    const profile = buildProfile([game({ ownRating: 800 }), game({ ownRating: 820 })]);
+    expect(profile.level.anchor).toMatchObject({ source: "headers", rating: 810 });
+    expect(profile.actualRating.recent).toBe(810);
   });
 
   it("groups openings by colour and sorts them by games", () => {

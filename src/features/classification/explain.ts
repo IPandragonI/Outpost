@@ -184,7 +184,7 @@ export function explainMove(
       details.push(t("explain.wouldWin", { san: bestSan, material: materialWords(t, gain) }));
     }
   }
-  if (result.flags.includes("slower-mate")) details.push(t("explain.slowerMate"));  
+  if (result.flags.includes("slower-mate")) details.push(t("explain.slowerMate"));
   if (result.flags.includes("low-confidence")) details.push(t("explain.lowConfidence"));
 
   return {

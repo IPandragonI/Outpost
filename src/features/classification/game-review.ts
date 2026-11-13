@@ -10,6 +10,7 @@ import {
   type ClassificationRules,
 } from "./classification-rules";
 import { classifyMove, type MoveClassification } from "./classify-move";
+import { ALIVE_MAX_CHANCE, ALIVE_MIN_CHANCE, rawRating, type AliveStats } from "./rating-model";
 
 export type Phase = "opening" | "middlegame" | "endgame";
 export const PHASES: readonly Phase[] = ["opening", "middlegame", "endgame"];
@@ -42,7 +43,9 @@ export interface PlayerSummary {
   movesReviewed: number;
   /** Precision within each phase (null when no judged move was played in it). */
   phases: Record<Phase, { precision: number | null; moves: number }>;
-  /** Rough playing level suggested by the average centipawn loss (see estimateRating). */
+  /** The moves played in positions that were still open, which the level is read from. */
+  alive: AliveStats;
+  /** Rough playing level suggested by those moves (see rating-model), rounded to 50. */
   estimatedRating: number | null;
 }
 
@@ -107,18 +110,6 @@ export function phasesOf(moves: readonly ReviewMove[]): Phase[] {
     current = Math.max(current, phase);
     return PHASES[current]!;
   });
-}
-
-/**
- * A rough level, in Elo-like points, from the average centipawn loss: 3100·e^(−0.01·ACPL),
- * a published rule of thumb, rounded to 50. It says how the moves compare with the engine's,
- * not what the player's rating is: needs at least eight judged moves, and is clamped to
- * 400–3000.
- */
-export function estimateRating(averageCpLoss: number | null, judgedMoves: number): number | null {
-  if (averageCpLoss === null || judgedMoves < 8) return null;
-  const rating = 3100 * Math.exp(-0.01 * averageCpLoss);
-  return Math.round(Math.max(400, Math.min(3000, rating)) / 50) * 50;
 }
 
 function emptyCounts(): Record<Classification, number> {
@@ -194,6 +185,20 @@ export function reviewGame(
         ];
       }),
     ) as PlayerSummary["phases"];
+    // Moves played while the game was still open: the ones that tell levels apart.
+    const open = judged.filter(
+      (m) => m.result.chanceBest >= ALIVE_MIN_CHANCE && m.result.chanceBest <= ALIVE_MAX_CHANCE,
+    );
+    const alive: AliveStats = {
+      moves: open.length,
+      acpl: open.length ? open.reduce((sum, m) => sum + m.result.cpLoss, 0) / open.length : null,
+      precision: gamePrecision(open.map((m) => m.accuracy)),
+      mistakes: open.filter((m) => m.result.classification === "mistake").length,
+      blunders: open.filter(
+        (m) => m.result.classification === "blunder" || m.result.classification === "miss",
+      ).length,
+    };
+    const rating = rawRating(alive);
     return {
       color,
       counts,
@@ -201,7 +206,8 @@ export function reviewGame(
       averageCpLoss,
       movesReviewed: own.length,
       phases: byPhase,
-      estimatedRating: estimateRating(averageCpLoss, judged.length),
+      alive,
+      estimatedRating: rating === null ? null : Math.round(rating / 50) * 50,
     };
   };
 
