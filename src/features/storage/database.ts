@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from "dexie";
 import type { PositionAnalysis } from "@/features/engine/uci-engine";
 import type { PgnHeaders } from "@/features/games/pgn";
+import type { GameSummary } from "@/features/stats/summary";
 import type { GameTree } from "@/features/games/variation-tree";
 import type { Color } from "@/lib/chess/position";
 import type { MessageKey, Translate, Vars } from "@/lib/i18n/translate";
@@ -32,6 +33,8 @@ export interface GameRecord {
     analyzed: number;
     total: number;
   };
+  /** Digest of the finished analysis, for the profile (see features/stats). */
+  summary?: GameSummary;
   createdAt: number;
   updatedAt: number;
 }

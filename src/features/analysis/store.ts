@@ -23,25 +23,13 @@ import { storageProblem, type GameRecord, type UserMessage } from "@/features/st
 import { analysisCache, games } from "@/features/storage/repositories";
 import { parseUci, positionKey, START_FEN, uciOf } from "@/lib/chess/position";
 import { loadOpeningBook } from "@/hooks/useOpeningBook";
-import type { SearchLimits } from "@/features/engine/uci";
 import { useSettings } from "@/features/settings/settings-store";
 import { createCloudEval } from "@/features/engine/cloud-eval";
-import { ANALYSIS_PRESETS, planLimits } from "./game-analysis";
+import { buildSummary } from "@/features/stats/summary";
+import { ANALYSIS_PRESETS } from "./game-analysis";
+import { planGame } from "./plan-game";
 import { analyzeGame, ANALYSIS_STRATEGY } from "./review-pipeline";
 import { sideOf } from "./perspective";
-
-/**
- * Search limits for each main-line position: book openings shallow (their moves are
- * labelled from theory), everything else at the preset depth. Without the opening book,
- * every position gets the preset.
- */
-async function planGame(fens: readonly string[], preset: SearchLimits): Promise<SearchLimits[]> {
-  const book = await loadOpeningBook().catch(() => null);
-  if (!book) return fens.map(() => preset);
-  const { lastBookIndex } = book.identify(fens);
-  // Same rule as the review (useGameReview): the move reaching position k is a book move.
-  return planLimits(fens.length, preset, (k) => k <= lastBookIndex && book.has(fens[k]!));
-}
 
 /** A line shown on the board without being added to the game (engine line, book line…). */
 export interface LinePreview {
@@ -477,9 +465,19 @@ export const useAnalysis = create<AnalysisState>()((set, get) => {
         if (runController !== controller) return;
         const complete = results.every(Boolean);
         set((s) => ({
-          run: { ...s.run, state: complete ? "done" : "cancelled", ...(complete ? { done: fens.length } : {}) },
+          run: {
+            ...s.run,
+            state: complete ? "done" : "cancelled",
+            ...(complete ? { done: fens.length } : {}),
+          },
         }));
         await persistStatus(complete ? "complete" : "partial", results.filter(Boolean).length);
+        if (complete && gameId) {
+          // Keep the digest the profile is built from (see features/stats).
+          const book = await loadOpeningBook().catch(() => null);
+          const summary = buildSummary(line, results, book);
+          if (summary) await games.saveSummary(gameId, summary).catch(() => undefined);
+        }
       } catch (error) {
         if (runController !== controller) return;
         if (isAbortError(error)) {

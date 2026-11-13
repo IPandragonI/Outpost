@@ -15,6 +15,7 @@ import {
   Settings,
   Sun,
   Swords,
+  UserRound,
   WifiOff,
   X,
 } from "lucide-react";
@@ -28,6 +29,7 @@ const NAV = [
   { href: "/", label: "nav.homeShort", icon: House },
   { href: "/games", label: "nav.library", icon: LayoutGrid },
   { href: "/analysis", label: "nav.analysis", icon: Swords },
+  { href: "/coach", label: "nav.coach", icon: UserRound },
   { href: "/openings", label: "nav.openings", icon: BookOpen },
   { href: "/learn", label: "nav.learn", icon: GraduationCap },
 ] as const;

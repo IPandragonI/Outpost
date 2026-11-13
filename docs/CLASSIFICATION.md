@@ -143,3 +143,28 @@ verdicts. Results on the "immortal" fixture:
 - **Lichess opening evaluations (optional).** Off by default; the setting sends the position
   (FEN only) of the first moves to lichess.org and falls back to the engine on any failure.
   It was tested with a simulated service, not against the live one.
+
+## The coach page ("Coach" tab)
+
+The coach page (`/coach`) is built on the device from the games that were analyzed to the end. Which
+side of a game is the player's comes from the saved username (the Chess.com account, or any
+name typed on the page), compared without case with the PGN's White and Black.
+
+- **Digest per game.** When an analysis completes, a compact digest (`GameSummary`: precision,
+  average centipawn loss, move counts by classification, precision by phase, mistake themes,
+  for both sides) is stored with the game, so the profile never rereads positions. Games
+  analyzed before that are summarized once from the engine cache and the digest is saved.
+- **Estimated level.** The median of the per-game estimates (see "estimated level" above) over
+  the latest 20 analyzed games, rounded to 10, with the quartiles as a range and a trend (the
+  median of the latest 5 games against the 5 before, from 10 games on). Under 5 games it is
+  shown as provisional. It is set beside the rating found in the games' headers when there is
+  one. It is a rule of thumb from how close the moves were to the engine's, not a rating.
+- **Statistics.** Results by colour and by time control (Chess.com's classes, from the
+  `TimeControl` header: under 3 minutes bullet, under 10 blitz, under an hour rapid), precision
+  overall, by phase and in won and lost games, move classes per 100 moves, recurring mistake
+  themes per game, openings by family (the part of the name before ":") for each colour with
+  results and precision in the opening phase, and the precision of the latest 40 games.
+- **Strengths and weaknesses.** Plain rules over those numbers, with a minimum of 3 games for
+  any comparison: the weakest and strongest phase (3 points apart), the most frequent mistake
+  theme, a colour scoring 15 points worse, the best and worst time control and opening
+  (15 points apart), brilliant and great moves per 100 moves, blunders and misses per 100 moves.

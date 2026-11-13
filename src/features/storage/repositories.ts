@@ -5,6 +5,7 @@ import type { PositionAnalysis } from "@/features/engine/uci-engine";
 import { gameTitle, type ParsedGame } from "@/features/games/pgn";
 import { mainline, type GameTree } from "@/features/games/variation-tree";
 import type { OpeningInfo } from "@/features/openings/opening-book";
+import type { GameSummary } from "@/features/stats/summary";
 import {
   getDatabase,
   type GameRecord,
@@ -79,6 +80,10 @@ export const games = {
     >,
   ): Promise<void> {
     await getDatabase().games.update(id, { ...patch, updatedAt: Date.now() });
+  },
+  /** Keeps the digest of a finished analysis; does not count as the game being opened. */
+  async saveSummary(id: string, summary: GameSummary): Promise<void> {
+    await getDatabase().games.update(id, { summary });
   },
   async rename(id: string, title: string): Promise<void> {
     const trimmed = title.trim();
